@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Needle Craft Manager</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="s-logo">
+        <div class="s-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3l18 18" />
+            <path d="M3 21l7-7" />
+            <circle cx="18" cy="6" r="3" />
+            <path d="M10 14l4-4" />
+          </svg>
+        </div>
+        <div>
+          <div class="s-name">Needle Craft</div>
+          <div class="s-sub">Manager</div>
+        </div>
+      </div>
+      <button class="nav-btn active" data-page="dashboard"><i class="ti ti-home"></i> Dashboard</button>
+      <button class="nav-btn" data-page="new-bill"><i class="ti ti-file-invoice"></i> New Bill</button>
+      <button class="nav-btn" data-page="payments"><i class="ti ti-cash"></i> Payments</button>
+      <button class="nav-btn" data-page="clients"><i class="ti ti-users"></i> Clients</button>
+      <button class="nav-btn" data-page="products"><i class="ti ti-package"></i> Products</button>
+      <button class="nav-btn" data-page="reports"><i class="ti ti-chart-bar"></i> Reports</button>
+      <div class="s-bottom">
+        <button class="backup-btn" onclick="backupData()"><i class="ti ti-database-export"></i> Backup Data</button>
+      </div>
+      <button class="backup-btn" style="margin-top:6px;border-color:rgba(255,0,0,0.2);color:rgba(255,100,100,0.6)"
+        onclick="localStorage.removeItem('nc_token');location.reload()">
+        <i class="ti ti-logout"></i> Sign out
+      </button>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <section id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h1 id="greeting">Good morning</h1>
+          <span id="today-date" class="date-badge"></span>
+        </div>
+        <div class="metrics-row" id="dash-metrics"></div>
+        <div class="aging-strip" id="aging-strip"></div>
+        <div class="charts-row">
+          <div class="card">
+            <div class="ct">Monthly revenue — billed vs collected</div>
+            <div class="legend-row"><span class="leg"><span class="leg-dot"
+                  style="background:#1a1a2e"></span>Billed</span><span class="leg"><span class="leg-dot"
+                  style="background:#C8A951"></span>Collected</span></div><canvas id="revenueChart"
+              height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="ct">Collection efficiency %</div>
+            <div class="legend-row"><span class="leg"><span class="leg-dot" style="background:#1D9E75"></span>Rate
+                %</span></div><canvas id="effChart" height="160"></canvas>
+          </div>
+        </div>
+        <div class="card" id="anomaly-card">
+          <div class="ct"><i class="ti ti-alert-triangle" style="color:#A32D2D"></i> Anomaly alerts</div>
+          <div id="anomaly-table-wrap"></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="ct"><i class="ti ti-flame" style="color:#A32D2D"></i> Top outstanding</div>
+            <div id="top-clients-table"></div>
+          </div>
+          <div class="card">
+            <div class="ct"><i class="ti ti-clock"></i> Today's bills</div>
+            <div id="todays-bills-table"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- NEW BILL -->
+      <section id="page-new-bill" class="page">
+        <div class="page-header">
+          <h1>New bill</h1>
+          <span class="bill-num-badge">Bill # <strong id="next-bill-num">—</strong></span>
+        </div>
+        <div class="card">
+          <div class="form-2">
+            <div class="fg"><label>Client name</label><input type="text" id="bill-client-input"
+                placeholder="Type to search..." autocomplete="off">
+              <div id="bill-client-dropdown" class="dropdown-list hidden"></div><input type="hidden" id="bill-firm-id">
+            </div>
+            <div class="fg"><label>Date</label><input type="date" id="bill-date"></div>
+            <div class="fg"><label>Bilty #</label><input type="text" id="bill-bilty" placeholder="e.g. ALI YASEEN">
+            </div>
+            <div class="fg"><label>D/O #</label><input type="text" id="bill-do" placeholder="e.g. 436"></div>
+          </div>
+          <div class="tog-row">
+            <button class="tog-btn" onclick="setBillType('cash',this)">Cash</button>
+            <button class="tog-btn active" onclick="setBillType('credit',this)">Credit</button>
+          </div>
+          <input type="hidden" id="bill-type" value="credit">
+          <div class="prev-bal-row" id="prev-bal-row" style="display:none">
+            <span class="prev-bal-label">Previous balance:</span>
+            <span class="prev-bal-val" id="prev-bal-val">₨ 0</span>
+          </div>
+          <table class="items-tbl" id="bill-items-table">
+            <thead>
+              <tr>
+                <th style="width:22px">#</th>
+                <th>Particular</th>
+                <th style="width:70px">Colour</th>
+                <th style="width:50px">Size</th>
+                <th style="width:55px">Qty</th>
+                <th style="width:65px">Price</th>
+                <th style="width:75px">Total</th>
+                <th style="width:30px"></th>
+              </tr>
+            </thead>
+            <tbody id="bill-items-body"></tbody>
+          </table>
+          <button class="add-row-btn" onclick="addBillRow()"><i class="ti ti-plus"></i> Add row</button>
+          <div class="charges-row">
+            <div class="fg-inline"><label>Bilty charges</label><input type="number" id="bill-bilty-charges" value="0"
+                min="0" onchange="recalcTotal()"></div>
+            <div class="fg-inline"><label>Packaging</label><input type="number" id="bill-pkg-charges" value="0" min="0"
+                onchange="recalcTotal()"></div>
+          </div>
+          <div class="grand-total-row">
+            Grand total: <span id="grand-total-val" class="grand-total-num">₨ 0</span>
+          </div>
+          <div id="amount-words" class="amount-words"></div>
+          <div id="new-balance-row" class="new-bal-row" style="display:none">New balance: <span id="new-bal-val"
+              class="red"></span></div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="saveBill()"><i class="ti ti-device-floppy"></i> Save bill</button>
+            <button class="btn-sec" onclick="previewPrint()"><i class="ti ti-printer"></i> Preview & Print A5</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAYMENTS -->
+      <section id="page-payments" class="page">
+        <h1 class="page-title">Add payment</h1>
+        <div class="card" style="max-width:480px">
+          <div class="fg"><label>Client name</label><input type="text" id="pmt-client-input"
+              placeholder="Type to search..." autocomplete="off">
+            <div id="pmt-client-dropdown" class="dropdown-list hidden"></div><input type="hidden" id="pmt-firm-id">
+          </div>
+          <div class="fg"><label>Date</label><input type="date" id="pmt-date"></div>
+          <div class="fg"><label>Amount (₨)</label><input type="number" id="pmt-amount" placeholder="0" min="0"></div>
+          <div class="fg"><label>Payment method</label>
+            <select id="pmt-method" onchange="toggleBankFields()">
+              <option>Cash</option>
+              <option>Cheque</option>
+              <option>Bank Transfer</option>
+              <option>Draft</option>
+            </select>
+          </div>
+          <div id="bank-fields" style="display:none">
+            <div class="fg"><label>Bank name</label><input type="text" id="pmt-bank"
+                placeholder="e.g. Online Meezan Bank"></div>
+            <div class="fg"><label>Cheque / Reference #</label><input type="text" id="pmt-ref"></div>
+          </div>
+          <div class="fg"><label>Memo</label><input type="text" id="pmt-memo" placeholder="Optional note"></div>
+          <button class="btn-primary" onclick="savePayment()"><i class="ti ti-device-floppy"></i> Save payment</button>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <div class="ct">Recent payments</div>
+          <div id="recent-pmts-table"></div>
+        </div>
+      </section>
+
+      <!-- CLIENTS -->
+      <section id="page-clients" class="page">
+        <div class="page-header">
+          <h1>Clients</h1>
+          <button class="btn-primary" onclick="showAddClientModal()"><i class="ti ti-plus"></i> Add client</button>
+        </div>
+        <input class="search-bar" id="client-search" placeholder="Search by name..." oninput="filterClients()">
+        <div class="card" style="padding:0">
+          <div id="clients-table"></div>
+        </div>
+      </section>
+
+      <!-- LEDGER -->
+      <section id="page-ledger" class="page">
+        <div class="page-header">
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn-icon" onclick="showPage('clients')"><i class="ti ti-arrow-left"></i></button>
+            <h1 id="ledger-firm-name">Ledger</h1>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sec" onclick="exportLedgerPDF()"><i class="ti ti-file-export"></i> Export PDF</button>
+            <button class="btn-primary" onclick="printLedger()"><i class="ti ti-printer"></i> Print</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <i class="ti ti-filter"></i>
+          <label>From</label><input type="date" id="ledger-from">
+          <label>To</label><input type="date" id="ledger-to">
+          <button class="btn-sec" onclick="loadLedger()"><i class="ti ti-search"></i> Filter</button>
+          <button class="btn-ghost" onclick="clearLedgerFilter()">Clear</button>
+          <div class="archive-toggle">
+            <button class="tog-btn" id="ledger-active-btn" onclick="setLedgerMode('active',this)">Active</button>
+            <button class="tog-btn" id="ledger-archive-btn" onclick="setLedgerMode('archive',this)">Archive</button>
+          </div>
+        </div>
+        <div id="archive-banner" class="archive-banner hidden">Archive — read only — data before 2024</div>
+        <div class="metrics-row" id="ledger-metrics" style="grid-template-columns:repeat(3,1fr)"></div>
+        <div class="card" style="padding:0">
+          <div id="ledger-table"></div>
+        </div>
+      </section>
+
+      <!-- PRODUCTS -->
+      <section id="page-products" class="page">
+        <div class="page-header">
+          <h1>Products</h1>
+          <button class="btn-primary" onclick="showAddProductModal()"><i class="ti ti-plus"></i> Add product</button>
+        </div>
+        <div class="card" style="padding:0">
+          <div id="products-table"></div>
+        </div>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="page-reports" class="page">
+        <h1 class="page-title">Reports</h1>
+        <div class="reports-grid">
+          <div class="report-card" onclick="showPage('ledger')">
+            <div class="report-icon"><i class="ti ti-book"></i></div>
+            <div class="report-title">Client ledger</div>
+            <div class="report-desc">Full transaction history with date filter and running balance</div>
+          </div>
+          <div class="report-card" onclick="showOutstanding()">
+            <div class="report-icon"><i class="ti ti-sort-descending"></i></div>
+            <div class="report-title">Outstanding balances</div>
+            <div class="report-desc">All clients with dues, sorted highest to lowest</div>
+          </div>
+          <div class="report-card" onclick="showDailySummary()">
+            <div class="report-icon"><i class="ti ti-calendar"></i></div>
+            <div class="report-title">Daily summary</div>
+            <div class="report-desc">All bills on a selected date</div>
+          </div>
+          <div class="report-card" onclick="showReprintBill()">
+            <div class="report-icon"><i class="ti ti-printer"></i></div>
+            <div class="report-title">Reprint bill</div>
+            <div class="report-desc">Find and reprint any past bill on A5</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRINT PREVIEW -->
+      <section id="page-print" class="page">
+        <div class="page-header no-print">
+          <button class="btn-sec" onclick="hidePrint()"><i class="ti ti-arrow-left"></i> Back</button>
+          <button class="btn-primary" onclick="window.print()"><i class="ti ti-printer"></i> Print</button>
+        </div>
+        <p class="print-note no-print">A5 print preview — this is what comes out of your printer</p>
+        <div id="print-content"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container"></div>
+
+  <!-- MODALS -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal(event)">
+    <div id="modal-box" class="modal-box">
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>
