@@ -39,21 +39,47 @@ async function doLogin() {
   }
 }
 
+// ─── STATE ────────────────────────────────────────────────────────────────────
 let allFirms = [];
 let allProducts = [];
 let currentLedgerFirmId = null;
-let currentLedgerMode = 'active';
 let editingBillId = null;
 let revenueChart = null;
 let effChart = null;
 
+// ─── LOADING HELPERS ──────────────────────────────────────────────────────────
+function showLoading(elementId, message = 'Loading...') {
+  const el = document.getElementById(elementId);
+  if (el) el.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>${message}</span></div>`;
+}
+
+function showError(elementId, message) {
+  const el = document.getElementById(elementId);
+  if (el) el.innerHTML = `<div class="error-state"><i class="ti ti-alert-circle"></i> ${message}</div>`;
+}
+
+function showInlineError(message, containerId) {
+  let errEl = document.getElementById(containerId);
+  if (!errEl) {
+    errEl = document.createElement('div');
+    errEl.id = containerId;
+    errEl.className = 'inline-error';
+  }
+  errEl.textContent = message;
+  errEl.style.display = 'block';
+  setTimeout(() => { if (errEl) errEl.style.display = 'none'; }, 4000);
+  return errEl;
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   if (!checkAuth()) return;
-  document.getElementById('greeting').textContent = greeting();
-  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  // Wire sidebar nav
+  document.getElementById('greeting').textContent = greeting();
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const page = btn.dataset.page;
@@ -63,10 +89,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  showLoading('dash-metrics', 'Loading dashboard...');
   await loadFirms();
   await loadProducts();
   await loadDashboard();
-  initNewBillForm();
+  initPaymentsForm();
 });
 
 // ─── PAGE NAVIGATION ──────────────────────────────────────────────────────────
@@ -74,15 +101,13 @@ function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const p = document.getElementById('page-' + name);
   if (p) p.classList.add('active');
-
   document.querySelectorAll('.nav-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.page === name);
   });
-
   if (name === 'dashboard') loadDashboard();
   if (name === 'clients') loadClients();
-  if (name === 'products') loadProducts();
-  if (name === 'payments') loadRecentPayments();
+  if (name === 'products') loadProductsPage();
+  if (name === 'payments') { initPaymentsForm(); loadRecentPayments(); }
   if (name === 'new-bill') { editingBillId = null; initNewBillForm(); }
 }
 
@@ -94,7 +119,7 @@ async function loadFirms() {
 }
 
 // ─── LOAD PRODUCTS ────────────────────────────────────────────────────────────
-async function loadProducts() {
+async function loadProductsPage() {
   try {
     const data = await api('/products');
     allProducts = data;
@@ -104,17 +129,21 @@ async function loadProducts() {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  showLoading('dash-metrics', 'Loading metrics...');
+  showLoading('aging-strip', '');
+  showLoading('anomaly-table-wrap', 'Checking for anomalies...');
+  showLoading('top-clients-table', 'Loading...');
+  showLoading('todays-bills-table', 'Loading...');
+
   try {
     const d = await api('/dashboard');
 
-    // Metrics
     document.getElementById('dash-metrics').innerHTML = `
       <div class="metric-card"><div class="metric-label">Total outstanding</div><div class="metric-value red">${fmt(d.totalOutstanding)}</div></div>
       <div class="metric-card"><div class="metric-label">Collected this month</div><div class="metric-value green">${fmt(d.collectedThisMonth)}</div></div>
       <div class="metric-card"><div class="metric-label">Billed this month</div><div class="metric-value gold">${fmt(d.billedThisMonth)}</div></div>
       <div class="metric-card"><div class="metric-label">Collection rate</div><div class="metric-value blue">${d.collectionRate}%</div></div>`;
 
-    // Aging strip
     const ag = d.aging;
     document.getElementById('aging-strip').innerHTML = `
       <div class="aging-card age-0" onclick="showOutstandingFiltered(0,30)"><div class="aging-label">Current 0–30 days</div><div class="aging-value">${fmt(ag.current.amount)}</div><div class="aging-sub">${ag.current.count} clients</div></div>
@@ -122,49 +151,105 @@ async function loadDashboard() {
       <div class="aging-card age-2" onclick="showOutstandingFiltered(61,90)"><div class="aging-label">Overdue 61–90 days</div><div class="aging-value">${fmt(ag.overdue61.amount)}</div><div class="aging-sub">${ag.overdue61.count} clients</div></div>
       <div class="aging-card age-3" onclick="showOutstandingFiltered(91,9999)"><div class="aging-label">Critical 90+ days</div><div class="aging-value">${fmt(ag.critical.amount)}</div><div class="aging-sub">${ag.critical.count} clients</div></div>`;
 
-    // Charts
     const months = Object.keys(d.monthlyStats);
-    const labels = months.map(m => { const [y, mo] = m.split('-'); return new Date(y, mo - 1).toLocaleString('default', { month: 'short' }); });
-    const billed = months.map(m => Math.round(d.monthlyStats[m].billed / 100) / 10);
-    const collected = months.map(m => Math.round(d.monthlyStats[m].collected / 100) / 10);
-    const efficiency = months.map(m => d.monthlyStats[m].billed > 0 ? Math.round((d.monthlyStats[m].collected / d.monthlyStats[m].billed) * 100) : 0);
+    const labels = months.map(m => {
+      const [y, mo] = m.split('-');
+      return new Date(y, mo - 1).toLocaleString('default', { month: 'short' });
+    });
+    const billed = months.map(m => Math.round(d.monthlyStats[m].billed / 1000));
+    const collected = months.map(m => Math.round(d.monthlyStats[m].collected / 1000));
+    const efficiency = months.map(m =>
+      d.monthlyStats[m].billed > 0
+        ? Math.round((d.monthlyStats[m].collected / d.monthlyStats[m].billed) * 100) : 0);
 
     if (revenueChart) revenueChart.destroy();
     if (effChart) effChart.destroy();
 
     revenueChart = new Chart(document.getElementById('revenueChart'), {
       type: 'bar',
-      data: { labels, datasets: [{ label: 'Billed', data: billed, backgroundColor: '#1a1a2e', borderRadius: 3 }, { label: 'Collected', data: collected, backgroundColor: '#C8A951', borderRadius: 3 }] },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888' } }, y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888', callback: v => '₨' + v + 'L' } } } }
+      data: {
+        labels,
+        datasets: [
+          { label: 'Billed', data: billed, backgroundColor: '#1a1a2e', borderRadius: 3 },
+          { label: 'Collected', data: collected, backgroundColor: '#C8A951', borderRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888' } },
+          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888', callback: v => '₨' + v + 'K' } }
+        }
+      }
     });
 
     effChart = new Chart(document.getElementById('effChart'), {
       type: 'line',
-      data: { labels, datasets: [{ label: 'Collection %', data: efficiency, borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.08)', borderWidth: 2, pointBackgroundColor: '#1D9E75', pointRadius: 4, fill: true, tension: 0.3 }] },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888' } }, y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888', callback: v => v + '%' } } } }
+      data: {
+        labels,
+        datasets: [{
+          label: 'Collection %',
+          data: efficiency,
+          borderColor: '#1D9E75',
+          backgroundColor: 'rgba(29,158,117,0.08)',
+          borderWidth: 2,
+          pointBackgroundColor: '#1D9E75',
+          pointRadius: 4,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888' } },
+          y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888', callback: v => v + '%' } }
+        }
+      }
     });
 
-    // Anomalies table
     renderAnomalyTable(d.anomalies || []);
 
-    // Top clients
-    document.getElementById('top-clients-table').innerHTML = d.top10.length === 0 ? '<p style="color:#888;font-size:13px;padding:8px">No outstanding balances.</p>' : `
-      <table><thead><tr><th style="width:24px">#</th><th>Client</th><th style="text-align:right;width:100px">Balance</th></tr></thead>
-      <tbody>${d.top10.map((c, i) => `<tr class="tr-hover" onclick="openLedger(${c.id})"><td>${i + 1}</td><td>${c.name}</td><td style="text-align:right" class="red">${fmtNum(c.balance)}</td></tr>`).join('')}</tbody></table>`;
+    document.getElementById('top-clients-table').innerHTML = d.top10.length === 0
+      ? '<p class="empty-state">No outstanding balances.</p>'
+      : `<div class="scroll-table"><table>
+          <thead><tr><th style="width:24px">#</th><th>Client</th><th style="text-align:right;width:100px">Balance</th></tr></thead>
+          <tbody>${d.top10.map((c, i) => `
+            <tr class="tr-hover" onclick="openLedger(${c.id})">
+              <td>${i + 1}</td><td>${c.name}</td>
+              <td style="text-align:right" class="red">${fmtNum(c.balance)}</td>
+            </tr>`).join('')}
+          </tbody></table></div>`;
 
-    // Today's bills
-    document.getElementById('todays-bills-table').innerHTML = d.todayBills.length === 0 ? '<p style="color:#888;font-size:13px;padding:8px">No bills yet today.</p>' : `
-      <table><thead><tr><th style="width:50px">Bill #</th><th>Client</th><th style="width:50px">Type</th><th style="text-align:right;width:80px">Amount</th><th style="width:36px"></th></tr></thead>
-      <tbody>${d.todayBills.map(b => `<tr class="tr-hover"><td>${b.id}</td><td>${b.firm_name}</td><td><span class="badge ${b.is_credit ? 'badge-credit' : 'badge-cash'}">${b.is_credit ? 'Credit' : 'Cash'}</span></td><td style="text-align:right">${fmtNum(b.total_amount)}</td><td><button class="icon-btn" onclick="editBill(${b.id})" title="Edit"><i class="ti ti-edit"></i></button></td></tr>`).join('')}</tbody></table>`;
+    document.getElementById('todays-bills-table').innerHTML = d.todayBills.length === 0
+      ? '<p class="empty-state">No bills yet today.</p>'
+      : `<table>
+          <thead><tr><th style="width:60px">Bill #</th><th>Client</th><th style="width:55px">Type</th><th style="text-align:right;width:85px">Amount</th><th style="width:36px"></th></tr></thead>
+          <tbody>${d.todayBills.map(b => `
+            <tr class="tr-hover">
+              <td>${b.id}</td><td>${b.firm_name}</td>
+              <td><span class="badge ${b.is_credit ? 'badge-credit' : 'badge-cash'}">${b.is_credit ? 'Credit' : 'Cash'}</span></td>
+              <td style="text-align:right">${fmtNum(b.total_amount)}</td>
+              <td><button class="icon-btn" onclick="editBill(${b.id})" title="Edit"><i class="ti ti-edit"></i></button></td>
+            </tr>`).join('')}
+          </tbody></table>`;
 
-  } catch (e) { console.error('loadDashboard:', e); }
+  } catch (e) {
+    showError('dash-metrics', 'Failed to load dashboard. Please refresh.');
+    console.error('loadDashboard:', e);
+  }
 }
 
 function renderAnomalyTable(anomalies) {
   const wrap = document.getElementById('anomaly-table-wrap');
-  if (!anomalies.length) { wrap.innerHTML = '<p style="color:#888;font-size:13px;padding:4px">No anomalies detected.</p>'; return; }
+  if (!anomalies.length) {
+    wrap.innerHTML = '<p class="empty-state">No anomalies detected.</p>';
+    return;
+  }
   wrap.innerHTML = `<table style="table-layout:auto">
-    <thead><tr><th style="width:90px">Type</th><th>Client</th><th>Details</th><th style="width:70px">When</th><th style="width:80px"></th></tr></thead>
+    <thead><tr><th style="width:100px">Type</th><th>Client</th><th>Details</th><th style="width:80px">When</th><th style="width:80px"></th></tr></thead>
     <tbody>${anomalies.map(a => `
       <tr id="anom-${a.id}">
         <td><span class="badge ${a.type === 'Duplicate' ? 'badge-danger' : 'badge-warn'}">${a.type}</span></td>
@@ -172,7 +257,7 @@ function renderAnomalyTable(anomalies) {
         <td style="white-space:normal;font-size:12px">${a.details}</td>
         <td style="font-size:11px;color:#888">${fmtDate(a.detected_at)}</td>
         <td><div class="action-btns">
-          ${a.firm_id ? `<button class="icon-btn" onclick="openLedger(${a.firm_id})" title="View ledger"><i class="ti ti-book"></i></button>` : ''}
+          ${a.firm_id ? `<button class="icon-btn" onclick="openLedger(${a.firm_id})" title="View"><i class="ti ti-book"></i></button>` : ''}
           <button class="icon-btn del" onclick="dismissAnomaly(${a.id})" title="Dismiss"><i class="ti ti-x"></i></button>
         </div></td>
       </tr>`).join('')}
@@ -184,7 +269,7 @@ async function dismissAnomaly(id) {
     await api(`/anomalies?id=${id}`, 'PUT');
     const row = document.getElementById('anom-' + id);
     if (row) row.remove();
-  } catch (e) { alert(e.message); }
+  } catch (e) { console.error(e); }
 }
 
 // ─── NEW BILL ─────────────────────────────────────────────────────────────────
@@ -200,21 +285,23 @@ function initNewBillForm() {
   document.getElementById('new-balance-row').style.display = 'none';
   document.getElementById('grand-total-val').textContent = '₨ 0';
   document.getElementById('amount-words').textContent = '';
+  document.getElementById('next-bill-num').textContent = 'Auto';
+
+  // Clear error states
+  const errEl = document.getElementById('bill-form-error');
+  if (errEl) errEl.style.display = 'none';
 
   const tbody = document.getElementById('bill-items-body');
   tbody.innerHTML = '';
   addBillRow(); addBillRow(); addBillRow();
 
-  document.getElementById('next-bill-num').textContent = 'Auto';
+  document.querySelectorAll('#page-new-bill .tog-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#page-new-bill .tog-btn:last-child').classList.add('active');
+  document.getElementById('bill-type').value = 'credit';
 
   buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => {
     await loadPrevBalance(id);
   });
-
-  // Set toggle to Credit
-  document.querySelectorAll('#page-new-bill .tog-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('#page-new-bill .tog-btn:last-child').classList.add('active');
-  document.getElementById('bill-type').value = 'credit';
 }
 
 async function loadPrevBalance(firmId) {
@@ -225,7 +312,7 @@ async function loadPrevBalance(firmId) {
     document.getElementById('prev-bal-val').textContent = fmt(balance);
     document.getElementById('prev-bal-val').className = balance > 0 ? 'prev-bal-val red' : 'prev-bal-val green';
     recalcTotal();
-  } catch (e) { }
+  } catch (e) { console.error(e); }
 }
 
 function addBillRow() {
@@ -235,52 +322,68 @@ function addBillRow() {
   tr.innerHTML = `
     <td style="color:#888;font-size:11px;text-align:center">${rowNum}</td>
     <td style="position:relative">
-      <input class="particular-input" placeholder="Code or name..." oninput="onParticularInput(this)" onblur="hideParticulars(this)">
+      <input class="particular-input" placeholder="Code or name..." autocomplete="off">
       <div class="dropdown-list hidden particular-dropdown"></div>
     </td>
     <td><input placeholder="Colour"></td>
     <td><input placeholder="Size"></td>
-    <td><input type="number" min="0" placeholder="0" onchange="calcRowTotal(this)" oninput="calcRowTotal(this)"></td>
-    <td><input type="number" min="0" placeholder="0" onchange="calcRowTotal(this)" oninput="calcRowTotal(this)"></td>
+    <td><input type="number" min="0" placeholder="0"></td>
+    <td><input type="number" min="0" placeholder="0"></td>
     <td style="font-weight:500;font-size:12px;text-align:right;padding-right:6px">—</td>
     <td><button class="icon-btn del" onclick="this.closest('tr').remove();recalcTotal()" title="Remove"><i class="ti ti-x"></i></button></td>`;
   tbody.appendChild(tr);
-}
 
-function onParticularInput(input) {
-  const q = input.value.toLowerCase();
-  const dropdown = input.nextElementSibling;
-  const matches = allProducts.filter(p => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
-  if (!q || matches.length === 0) { dropdown.classList.add('hidden'); return; }
-  dropdown.innerHTML = matches.map(p => `<div class="dropdown-item" data-code="${p.code}" data-name="${p.name}" data-price="${p.standard_price}">${p.code} — ${p.name} <span style="color:#888;float:right">₨${fmtNum(p.standard_price)}</span></div>`).join('');
-  dropdown.classList.remove('hidden');
-  dropdown.querySelectorAll('.dropdown-item').forEach(item => {
-    item.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      input.value = item.dataset.name;
-      input.dataset.code = item.dataset.code;
-      // Fill price
-      const row = input.closest('tr');
-      const priceInput = row.querySelectorAll('input[type=number]')[1];
-      if (priceInput && (!priceInput.value || priceInput.value === '0')) priceInput.value = item.dataset.price;
-      dropdown.classList.add('hidden');
-      calcRowTotal(priceInput);
+  // Wire up the particular input
+  const particularInput = tr.querySelector('.particular-input');
+  const dropdown = tr.querySelector('.particular-dropdown');
+  const qtyInput = tr.querySelectorAll('input[type=number]')[0];
+  const priceInput = tr.querySelectorAll('input[type=number]')[1];
+
+  particularInput.addEventListener('input', () => {
+    const q = particularInput.value.toLowerCase().trim();
+    if (!q) { dropdown.classList.add('hidden'); return; }
+    const matches = allProducts.filter(p =>
+      p.code.toLowerCase().startsWith(q) ||
+      p.name.toLowerCase().includes(q) ||
+      p.code.toLowerCase() === q
+    ).slice(0, 8);
+    if (!matches.length) { dropdown.classList.add('hidden'); return; }
+    dropdown.innerHTML = matches.map(p =>
+      `<div class="dropdown-item" data-code="${p.code}" data-name="${p.name}" data-price="${p.standard_price}">
+        <strong>${p.code}</strong> — ${p.name}
+        <span style="color:#888;float:right">₨${fmtNum(p.standard_price)}</span>
+      </div>`
+    ).join('');
+    dropdown.classList.remove('hidden');
+    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        particularInput.value = item.dataset.name;
+        particularInput.dataset.code = item.dataset.code;
+        if (!priceInput.value || priceInput.value === '0') {
+          priceInput.value = item.dataset.price;
+        }
+        dropdown.classList.add('hidden');
+        calcRowTotal(tr);
+      });
     });
   });
+
+  particularInput.addEventListener('blur', () => {
+    setTimeout(() => dropdown.classList.add('hidden'), 150);
+  });
+
+  // Also wire qty and price to recalc
+  qtyInput.addEventListener('input', () => calcRowTotal(tr));
+  priceInput.addEventListener('input', () => calcRowTotal(tr));
 }
 
-function hideParticulars(input) {
-  setTimeout(() => { const d = input.nextElementSibling; if (d) d.classList.add('hidden'); }, 150);
-}
-
-function calcRowTotal(input) {
-  const row = input.closest('tr');
+function calcRowTotal(row) {
   const inputs = row.querySelectorAll('input[type=number]');
   const qty = parseFloat(inputs[0]?.value) || 0;
   const price = parseFloat(inputs[1]?.value) || 0;
   const total = qty * price;
-  const totalCell = row.cells[6];
-  totalCell.textContent = total > 0 ? fmtNum(total) : '—';
+  row.cells[6].textContent = total > 0 ? fmtNum(total) : '—';
   recalcTotal();
 }
 
@@ -299,15 +402,13 @@ function recalcTotal() {
   document.getElementById('grand-total-val').textContent = fmt(grand);
   document.getElementById('amount-words').textContent = amountInWords(grand);
 
-  // Update new balance
-  const prevBalEl = document.getElementById('prev-bal-val');
   const firmId = document.getElementById('bill-firm-id').value;
+  const prevBalEl = document.getElementById('prev-bal-val');
   if (firmId && prevBalEl) {
     const prevText = prevBalEl.textContent.replace(/[₨,\s]/g, '');
     const prev = parseFloat(prevText) || 0;
-    const newBal = prev + grand;
     document.getElementById('new-balance-row').style.display = 'block';
-    document.getElementById('new-bal-val').textContent = fmt(newBal);
+    document.getElementById('new-bal-val').textContent = fmt(prev + grand);
   }
 }
 
@@ -329,20 +430,40 @@ function collectBillItems() {
     if (qty === 0 && price === 0) return;
     const colour = row.cells[2].querySelector('input')?.value?.trim() || '';
     const size = row.cells[3].querySelector('input')?.value?.trim() || '';
-    const product = allProducts.find(p => p.name.toLowerCase() === particular.toLowerCase() || p.code.toLowerCase() === particular.toLowerCase());
-    items.push({ product_id: product?.id || null, product_name: product?.name || particular, colour, size, quantity: qty, price, total: qty * price });
+    const product = allProducts.find(p =>
+      p.name.toLowerCase() === particular.toLowerCase() ||
+      p.code.toLowerCase() === particular.toLowerCase()
+    );
+    items.push({
+      product_id: product?.id || null,
+      product_name: product?.name || particular,
+      colour, size, quantity: qty, price, total: qty * price
+    });
   });
   return items;
 }
 
+function showBillError(message) {
+  let errEl = document.getElementById('bill-form-error');
+  if (!errEl) {
+    errEl = document.createElement('div');
+    errEl.id = 'bill-form-error';
+    errEl.className = 'inline-error';
+    document.querySelector('#page-new-bill .card').prepend(errEl);
+  }
+  errEl.textContent = message;
+  errEl.style.display = 'block';
+  errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { errEl.style.display = 'none'; }, 5000);
+}
+
 async function saveBill() {
   const firmId = parseInt(document.getElementById('bill-firm-id').value);
-  if (!firmId) { alert('Please select a client.'); return; }
+  if (!firmId) { showBillError('Please select a client before saving.'); return; }
   const billDate = document.getElementById('bill-date').value;
-  if (!billDate) { alert('Please enter a date.'); return; }
-
+  if (!billDate) { showBillError('Please enter a date.'); return; }
   const items = collectBillItems();
-  if (items.length === 0) { alert('Please add at least one item.'); return; }
+  if (items.length === 0) { showBillError('Please add at least one item with quantity and price.'); return; }
 
   const total = items.reduce((s, i) => s + i.total, 0)
     + (parseInt(document.getElementById('bill-bilty-charges').value) || 0)
@@ -380,7 +501,9 @@ async function saveBill() {
     }));
 
     showToast({
-      title: hasAnomaly ? `Bill saved — ${result.anomalies[0].type} detected` : (editingBillId ? 'Bill updated' : 'Bill saved'),
+      title: hasAnomaly
+        ? `Bill saved — ${result.anomalies[0].type} detected`
+        : (editingBillId ? 'Bill updated' : 'Bill saved'),
       subtitle: `Recent entries — ${firm?.name || ''}`,
       entries: toastEntries,
       hasAnomaly,
@@ -390,7 +513,7 @@ async function saveBill() {
     editingBillId = null;
     initNewBillForm();
     await loadFirms();
-  } catch (e) { alert('Error saving bill: ' + e.message); }
+  } catch (e) { showBillError('Error saving bill: ' + e.message); }
 }
 
 async function editBill(id) {
@@ -399,7 +522,6 @@ async function editBill(id) {
     editingBillId = id;
     showPage('new-bill');
     document.querySelector('.nav-btn[data-page="new-bill"]').classList.add('active');
-
     await new Promise(r => setTimeout(r, 50));
 
     const firm = allFirms.find(f => f.id === bill.firm_id);
@@ -434,28 +556,36 @@ async function editBill(id) {
     recalcTotal();
     await loadPrevBalance(bill.firm_id);
 
-    buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => { await loadPrevBalance(id); });
-  } catch (e) { alert('Error loading bill: ' + e.message); }
+    buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => {
+      await loadPrevBalance(id);
+    });
+  } catch (e) { showBillError('Error loading bill: ' + e.message); }
 }
 
 async function deleteBill(id) {
   if (!window.confirm('Delete this bill? This cannot be undone.')) return;
   try {
     await api(`/bills?id=${id}`, 'DELETE');
-    showToast({ title: 'Bill deleted', subtitle: '', entries: [] });
-    showPage('dashboard');
-  } catch (e) { alert(e.message); }
+    showToast({ title: 'Bill deleted', entries: [] });
+    await loadFirms();
+    if (currentLedgerFirmId) loadLedger();
+    else loadDashboard();
+  } catch (e) {
+    showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
+  }
 }
 
 // ─── PRINT ────────────────────────────────────────────────────────────────────
 function previewPrint() {
   const firmId = document.getElementById('bill-firm-id').value;
+  if (!firmId) { showBillError('Please select a client first.'); return; }
   const firm = allFirms.find(f => f.id == firmId);
   const billDate = document.getElementById('bill-date').value;
   const biltyNo = document.getElementById('bill-bilty').value;
   const doNo = document.getElementById('bill-do').value;
   const billType = document.getElementById('bill-type').value;
   const items = collectBillItems();
+  if (!items.length) { showBillError('Please add items before printing.'); return; }
   const biltyCharges = parseInt(document.getElementById('bill-bilty-charges').value) || 0;
   const pkgCharges = parseInt(document.getElementById('bill-pkg-charges').value) || 0;
   const grand = items.reduce((s, i) => s + i.total, 0) + biltyCharges + pkgCharges;
@@ -472,12 +602,26 @@ function previewPrint() {
         <div class="print-sub">Ph: 051-XXXXXXX</div>
       </div>
       <div class="print-meta">
-        <div><strong>Bill #:</strong> ${billNum}<br>${biltyNo ? `<strong>Bilty #:</strong> ${biltyNo}<br>` : ''}${doNo ? `<strong>D/O #:</strong> ${doNo}` : ''}</div>
-        <div style="text-align:right"><strong>Date:</strong> ${fmtDate(billDate)}<br><strong>Type:</strong> ${billType === 'credit' ? 'Credit' : 'Cash'}<br><strong>Client:</strong> ${firm?.name || '—'}</div>
+        <div>
+          <strong>Bill #:</strong> ${billNum}<br>
+          ${biltyNo ? `<strong>Bilty #:</strong> ${biltyNo}<br>` : ''}
+          ${doNo ? `<strong>D/O #:</strong> ${doNo}` : ''}
+        </div>
+        <div style="text-align:right">
+          <strong>Date:</strong> ${fmtDate(billDate)}<br>
+          <strong>Type:</strong> ${billType === 'credit' ? 'Credit' : 'Cash'}<br>
+          <strong>Client:</strong> ${firm?.name || '—'}
+        </div>
       </div>
       <table class="print-table">
         <thead><tr><th>#</th><th>Particular</th><th>Colour</th><th>Size</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
-        <tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td>${item.product_name}</td><td>${item.colour || ''}</td><td>${item.size || ''}</td><td>${item.quantity}</td><td>${fmtNum(item.price)}</td><td>${fmtNum(item.total)}</td></tr>`).join('')}</tbody>
+        <tbody>${items.map((item, i) => `
+          <tr>
+            <td>${i + 1}</td><td>${item.product_name}</td>
+            <td>${item.colour || ''}</td><td>${item.size || ''}</td>
+            <td>${item.quantity}</td><td>${fmtNum(item.price)}</td><td>${fmtNum(item.total)}</td>
+          </tr>`).join('')}
+        </tbody>
       </table>
       <div class="print-totals">
         ${biltyCharges ? `<div>Bilty charges: ${fmtNum(biltyCharges)}</div>` : ''}
@@ -497,9 +641,7 @@ function previewPrint() {
   document.getElementById('page-print').classList.add('active');
 }
 
-function hidePrint() {
-  showPage(editingBillId ? 'new-bill' : 'new-bill');
-}
+function hidePrint() { showPage('new-bill'); }
 
 // ─── PAYMENTS ─────────────────────────────────────────────────────────────────
 function initPaymentsForm() {
@@ -512,25 +654,45 @@ function initPaymentsForm() {
   document.getElementById('bank-fields').style.display = 'none';
   document.getElementById('pmt-client-input').value = '';
   document.getElementById('pmt-firm-id').value = '';
+
+  const errEl = document.getElementById('pmt-form-error');
+  if (errEl) errEl.style.display = 'none';
+
+  // Wire up client search for payments
   buildSearchDropdown('pmt-client-input', 'pmt-client-dropdown', allFirms, 'pmt-firm-id', null);
 }
 
-document.addEventListener('DOMContentLoaded', () => { setTimeout(initPaymentsForm, 100); });
-
 function toggleBankFields() {
   const method = document.getElementById('pmt-method').value;
-  document.getElementById('bank-fields').style.display = (method === 'Cheque' || method === 'Bank Transfer') ? 'block' : 'none';
+  document.getElementById('bank-fields').style.display =
+    (method === 'Cheque' || method === 'Bank Transfer') ? 'block' : 'none';
+}
+
+function showPmtError(message) {
+  let errEl = document.getElementById('pmt-form-error');
+  if (!errEl) {
+    errEl = document.createElement('div');
+    errEl.id = 'pmt-form-error';
+    errEl.className = 'inline-error';
+    document.querySelector('#page-payments .card').prepend(errEl);
+  }
+  errEl.textContent = message;
+  errEl.style.display = 'block';
+  errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { errEl.style.display = 'none'; }, 5000);
 }
 
 async function savePayment() {
   const firmId = parseInt(document.getElementById('pmt-firm-id').value);
-  if (!firmId) { alert('Please select a client.'); return; }
+  if (!firmId) { showPmtError('Please select a client before saving.'); return; }
   const amount = parseInt(document.getElementById('pmt-amount').value);
-  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  if (!amount || amount <= 0) { showPmtError('Please enter a valid amount greater than zero.'); return; }
+  const pmtDate = document.getElementById('pmt-date').value;
+  if (!pmtDate) { showPmtError('Please enter a date.'); return; }
 
   const pmtData = {
     firm_id: firmId,
-    payment_date: document.getElementById('pmt-date').value,
+    payment_date: pmtDate,
     amount,
     method: document.getElementById('pmt-method').value,
     bank_name: document.getElementById('pmt-bank').value,
@@ -544,28 +706,37 @@ async function savePayment() {
     const hasAnomaly = !!result.anomaly;
 
     const entries = [];
-    (result.recentBills || []).forEach(b => entries.push({ date: fmtDate(b.bill_date), desc: `Bill # ${b.id}`, amount: fmt(b.total_amount), highlight: false }));
-    (result.recentPmts || []).slice(0, 2).forEach(p => entries.push({ date: fmtDate(p.payment_date), desc: p.method + (p.bank_name ? ' — ' + p.bank_name : ''), amount: fmt(p.amount), highlight: false }));
+    (result.recentBills || []).forEach(b => entries.push({
+      date: fmtDate(b.bill_date), desc: `Bill # ${b.id}`,
+      amount: fmt(b.total_amount), highlight: false
+    }));
+    (result.recentPmts || []).slice(0, 2).forEach(p => entries.push({
+      date: fmtDate(p.payment_date),
+      desc: p.method + (p.bank_name ? ' — ' + p.bank_name : ''),
+      amount: fmt(p.amount), highlight: false
+    }));
 
     showToast({
       title: hasAnomaly ? 'Payment saved — Overpayment detected' : 'Payment saved',
       subtitle: `Recent entries — ${firm?.name || ''}`,
-      entries,
-      hasAnomaly,
-      firmId
+      entries, hasAnomaly, firmId
     });
 
     initPaymentsForm();
     await loadRecentPayments();
     await loadFirms();
-  } catch (e) { alert('Error saving payment: ' + e.message); }
+  } catch (e) { showPmtError('Error saving payment: ' + e.message); }
 }
 
 async function loadRecentPayments() {
+  showLoading('recent-pmts-table', 'Loading payments...');
   try {
     const data = await api('/payments');
     const wrap = document.getElementById('recent-pmts-table');
-    if (!data.length) { wrap.innerHTML = '<p style="color:#888;font-size:13px;padding:8px">No payments yet.</p>'; return; }
+    if (!data.length) {
+      wrap.innerHTML = '<p class="empty-state">No payments yet.</p>';
+      return;
+    }
     wrap.innerHTML = `<table style="table-layout:auto">
       <thead><tr><th>Date</th><th>Client</th><th>Method</th><th style="text-align:right">Amount</th><th style="width:70px"></th></tr></thead>
       <tbody>${data.map(p => `
@@ -580,7 +751,7 @@ async function loadRecentPayments() {
           </div></td>
         </tr>`).join('')}
       </tbody></table>`;
-  } catch (e) { console.error(e); }
+  } catch (e) { showError('recent-pmts-table', 'Failed to load payments.'); }
 }
 
 async function deletePayment(id) {
@@ -590,7 +761,9 @@ async function deletePayment(id) {
     showToast({ title: 'Payment deleted', entries: [] });
     await loadRecentPayments();
     await loadFirms();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
+  }
 }
 
 async function editPaymentModal(id) {
@@ -602,7 +775,14 @@ async function editPaymentModal(id) {
       <div class="modal-title">Edit payment</div>
       <div class="fg"><label>Date</label><input type="date" id="ep-date" value="${p.payment_date}"></div>
       <div class="fg"><label>Amount (₨)</label><input type="number" id="ep-amount" value="${p.amount}"></div>
-      <div class="fg"><label>Method</label><select id="ep-method"><option ${p.method === 'Cash' ? 'selected' : ''}>Cash</option><option ${p.method === 'Cheque' ? 'selected' : ''}>Cheque</option><option ${p.method === 'Bank Transfer' ? 'selected' : ''}>Bank Transfer</option><option ${p.method === 'Draft' ? 'selected' : ''}>Draft</option></select></div>
+      <div class="fg"><label>Method</label>
+        <select id="ep-method">
+          <option ${p.method === 'Cash' ? 'selected' : ''}>Cash</option>
+          <option ${p.method === 'Cheque' ? 'selected' : ''}>Cheque</option>
+          <option ${p.method === 'Bank Transfer' ? 'selected' : ''}>Bank Transfer</option>
+          <option ${p.method === 'Draft' ? 'selected' : ''}>Draft</option>
+        </select>
+      </div>
       <div class="fg"><label>Bank name</label><input type="text" id="ep-bank" value="${p.bank_name || ''}"></div>
       <div class="fg"><label>Reference #</label><input type="text" id="ep-ref" value="${p.cheque_number || ''}"></div>
       <div class="fg"><label>Memo</label><input type="text" id="ep-memo" value="${p.memo || ''}"></div>
@@ -610,7 +790,7 @@ async function editPaymentModal(id) {
         <button class="btn-primary" onclick="saveEditedPayment(${id})"><i class="ti ti-device-floppy"></i> Save</button>
         <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
       </div>`);
-  } catch (e) { alert(e.message); }
+  } catch (e) { console.error(e); }
 }
 
 async function saveEditedPayment(id) {
@@ -628,33 +808,41 @@ async function saveEditedPayment(id) {
     showToast({ title: 'Payment updated', entries: [] });
     await loadRecentPayments();
     await loadFirms();
-  } catch (e) { alert(e.message); }
+  } catch (e) { console.error(e); }
 }
 
 // ─── CLIENTS ──────────────────────────────────────────────────────────────────
 async function loadClients() {
+  showLoading('clients-table', 'Loading clients...');
   try {
     allFirms = await api('/firms');
     renderClientsTable(allFirms);
-  } catch (e) { console.error(e); }
+  } catch (e) { showError('clients-table', 'Failed to load clients.'); }
 }
 
 function renderClientsTable(firms) {
   const wrap = document.getElementById('clients-table');
-  if (!firms.length) { wrap.innerHTML = '<p style="color:#888;font-size:13px;padding:12px">No clients found.</p>'; return; }
-  wrap.innerHTML = `<table>
-    <thead><tr><th style="width:36px">#</th><th>Name</th><th style="text-align:right;width:110px">Balance</th><th style="width:80px"></th></tr></thead>
-    <tbody>${firms.map((f, i) => `
-      <tr>
-        <td style="color:#888">${i + 1}</td>
-        <td>${f.name}</td>
-        <td style="text-align:right" class="${f.balance > 0 ? 'red' : 'green'}">${fmt(f.balance || 0)}</td>
-        <td><div class="action-btns">
-          <button class="icon-btn" onclick="openLedger(${f.id})" title="View ledger"><i class="ti ti-book"></i></button>
-          <button class="icon-btn del" onclick="deleteClient(${f.id})" title="Delete"><i class="ti ti-trash"></i></button>
-        </div></td>
-      </tr>`).join('')}
-    </tbody></table>`;
+  if (!firms.length) {
+    wrap.innerHTML = '<p class="empty-state">No clients found.</p>';
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="scroll-table-clients">
+      <table>
+        <thead><tr><th style="width:36px">#</th><th>Name</th><th style="text-align:right;width:120px">Balance</th><th style="width:80px"></th></tr></thead>
+        <tbody>${firms.map((f, i) => `
+          <tr>
+            <td style="color:#888">${i + 1}</td>
+            <td>${f.name}</td>
+            <td style="text-align:right" class="${f.balance > 0 ? 'red' : 'green'}">${fmt(f.balance || 0)}</td>
+            <td><div class="action-btns">
+              <button class="icon-btn" onclick="openLedger(${f.id})" title="View ledger"><i class="ti ti-book"></i></button>
+              <button class="icon-btn del" onclick="deleteClient(${f.id})" title="Delete"><i class="ti ti-trash"></i></button>
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function filterClients() {
@@ -666,7 +854,10 @@ function filterClients() {
 function showAddClientModal() {
   showModal(`
     <div class="modal-title">Add new client</div>
-    <div class="fg"><label>Client / firm name</label><input type="text" id="new-client-name" placeholder="e.g. Garrison Army Store Quetta" autofocus></div>
+    <div class="fg"><label>Client / firm name</label>
+      <input type="text" id="new-client-name" placeholder="e.g. Garrison Army Store Quetta" autofocus>
+    </div>
+    <div id="add-client-error" class="inline-error" style="display:none"></div>
     <div class="btn-row">
       <button class="btn-primary" onclick="saveNewClient()"><i class="ti ti-check"></i> Save client</button>
       <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
@@ -675,14 +866,22 @@ function showAddClientModal() {
 
 async function saveNewClient() {
   const name = document.getElementById('new-client-name').value.trim();
-  if (!name) { alert('Please enter a name.'); return; }
+  if (!name) {
+    const errEl = document.getElementById('add-client-error');
+    errEl.textContent = 'Please enter a client name.';
+    errEl.style.display = 'block';
+    return;
+  }
   try {
     const firm = await api('/firms', 'POST', { name });
     closeModalDirect();
     showToast({ title: `Client "${firm.name}" added`, entries: [] });
     await loadFirms();
     await loadClients();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    const errEl = document.getElementById('add-client-error');
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
 }
 
 async function deleteClient(id) {
@@ -692,80 +891,86 @@ async function deleteClient(id) {
     showToast({ title: 'Client deleted', entries: [] });
     await loadFirms();
     await loadClients();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    showToast({ title: e.message, entries: [], hasAnomaly: true });
+  }
 }
 
 // ─── LEDGER ───────────────────────────────────────────────────────────────────
 async function openLedger(firmId) {
   currentLedgerFirmId = firmId;
-  currentLedgerMode = 'active';
   const firm = allFirms.find(f => f.id == firmId);
   document.getElementById('ledger-firm-name').textContent = firm?.name || 'Ledger';
-  document.getElementById('ledger-from').value = '';
+  // Default: from 2024-01-01, no end date
+  document.getElementById('ledger-from').value = '2024-01-01';
   document.getElementById('ledger-to').value = '';
-  document.getElementById('ledger-active-btn').classList.add('active');
-  document.getElementById('ledger-archive-btn').classList.remove('active');
-  document.getElementById('archive-banner').classList.add('hidden');
   showPage('ledger');
   await loadLedger();
 }
 
 async function loadLedger() {
   if (!currentLedgerFirmId) return;
+  showLoading('ledger-table', 'Loading ledger...');
+  showLoading('ledger-metrics', '');
+
   const from = document.getElementById('ledger-from').value;
   const to = document.getElementById('ledger-to').value;
-  const isArchive = currentLedgerMode === 'archive';
   let url = `/ledger?firm_id=${currentLedgerFirmId}`;
   if (from) url += `&from=${from}`;
   if (to) url += `&to=${to}`;
-  if (isArchive) url += `&archive=1`;
 
   try {
     const data = await api(url);
+
     document.getElementById('ledger-metrics').innerHTML = `
       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value green">${fmt(data.totalPaid)}</div></div>
       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'red' : 'green'}">${fmt(data.balance)}</div></div>`;
 
     if (!data.entries.length) {
-      document.getElementById('ledger-table').innerHTML = '<p style="color:#888;font-size:13px;padding:12px">No entries found.</p>';
+      document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
       return;
     }
 
-    document.getElementById('ledger-table').innerHTML = `<table style="table-layout:auto">
-      <thead><tr><th style="width:90px">Date</th><th>Description</th><th style="text-align:right;width:90px">Credit</th><th style="text-align:right;width:90px">Debit</th><th style="text-align:right;width:90px">Balance</th>${isArchive ? '' : '<th style="width:60px"></th>'}</tr></thead>
-      <tbody>${data.entries.map(e => `
-        <tr>
-          <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
-          <td>${e.description}</td>
-          <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
-          <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
-          <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
-          ${isArchive ? '' : `<td><div class="action-btns">
-            ${e.type === 'bill' ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>` : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>`}
-            <button class="icon-btn del" onclick="${e.type === 'bill' ? `deleteBill(${e.id})` : `deletePayment(${e.id})`}" title="Delete"><i class="ti ti-trash"></i></button>
-          </div></td>`}
-        </tr>`).join('')}
-      </tbody></table>`;
-  } catch (e) { console.error(e); }
-}
-
-function setLedgerMode(mode, btn) {
-  currentLedgerMode = mode;
-  document.querySelectorAll('.archive-toggle .tog-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('archive-banner').classList.toggle('hidden', mode !== 'archive');
-  loadLedger();
+    document.getElementById('ledger-table').innerHTML = `
+      <table style="table-layout:auto">
+        <thead><tr>
+          <th style="width:95px">Date</th>
+          <th>Description</th>
+          <th style="text-align:right;width:95px">Credit</th>
+          <th style="text-align:right;width:95px">Debit</th>
+          <th style="text-align:right;width:95px">Balance</th>
+          <th style="width:65px"></th>
+        </tr></thead>
+        <tbody>${data.entries.map(e => `
+          <tr>
+            <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
+            <td>${e.description}</td>
+            <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
+            <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
+            <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
+            <td>${e.type === 'opening' ? '' : `
+              <div class="action-btns">
+                ${e.type === 'bill'
+          ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>
+                     <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete bill"><i class="ti ti-trash"></i></button>`
+          : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>
+                     <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete payment"><i class="ti ti-trash"></i></button>`}
+              </div>`}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) { showError('ledger-table', 'Failed to load ledger.'); }
 }
 
 function clearLedgerFilter() {
-  document.getElementById('ledger-from').value = '';
+  document.getElementById('ledger-from').value = '2024-01-01';
   document.getElementById('ledger-to').value = '';
   loadLedger();
 }
 
 function printLedger() { window.print(); }
-
 function exportLedgerPDF() {
   alert('To export as PDF: use the Print button and select "Save as PDF" as your printer.');
 }
@@ -774,9 +979,19 @@ function exportLedgerPDF() {
 function renderProductsTable(products) {
   const wrap = document.getElementById('products-table');
   if (!wrap) return;
-  if (!products.length) { wrap.innerHTML = '<p style="color:#888;font-size:13px;padding:12px">No products yet.</p>'; return; }
+  if (!products.length) {
+    wrap.innerHTML = '<p class="empty-state">No products yet.</p>';
+    return;
+  }
   wrap.innerHTML = `<table style="table-layout:auto">
-    <thead><tr><th>Code</th><th>Product name</th><th style="text-align:right">Std. price</th><th style="text-align:right;color:#bbb">Cost price</th><th style="text-align:right;color:#bbb">Margin</th><th style="text-align:right">Units sold</th><th style="width:60px"></th></tr></thead>
+    <thead><tr>
+      <th>Code</th><th>Product name</th>
+      <th style="text-align:right">Std. price</th>
+      <th style="text-align:right;color:#bbb">Cost</th>
+      <th style="text-align:right;color:#bbb">Margin</th>
+      <th style="text-align:right">Units sold</th>
+      <th style="width:60px"></th>
+    </tr></thead>
     <tbody>${products.map(p => `
       <tr>
         <td style="font-weight:500">${p.code}</td>
@@ -802,6 +1017,7 @@ function showAddProductModal() {
     </div>
     <div class="fg"><label>Product name</label><input type="text" id="np-name" placeholder="e.g. Summer Vests"></div>
     <div class="fg"><label>Cost price (₨) — optional</label><input type="number" id="np-cost" placeholder="0" min="0"></div>
+    <div id="add-product-error" class="inline-error" style="display:none"></div>
     <div class="btn-row">
       <button class="btn-primary" onclick="saveNewProduct()"><i class="ti ti-check"></i> Save product</button>
       <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
@@ -813,13 +1029,22 @@ async function saveNewProduct() {
   const name = document.getElementById('np-name').value.trim();
   const price = parseInt(document.getElementById('np-price').value) || 0;
   const cost = parseInt(document.getElementById('np-cost').value) || 0;
-  if (!code || !name) { alert('Please enter code and name.'); return; }
+  if (!code || !name) {
+    const errEl = document.getElementById('add-product-error');
+    errEl.textContent = 'Please enter both code and name.';
+    errEl.style.display = 'block';
+    return;
+  }
   try {
     await api('/products', 'POST', { code, name, standard_price: price, cost_price: cost });
     closeModalDirect();
     showToast({ title: `Product "${name}" added`, entries: [] });
-    await loadProducts();
-  } catch (e) { alert(e.message); }
+    allProducts = await api('/products');
+    renderProductsTable(allProducts);
+  } catch (e) {
+    const errEl = document.getElementById('add-product-error');
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
 }
 
 async function editProductModal(id) {
@@ -850,8 +1075,9 @@ async function saveEditedProduct(id) {
     await api(`/products?id=${id}`, 'PUT', body);
     closeModalDirect();
     showToast({ title: 'Product updated', entries: [] });
-    await loadProducts();
-  } catch (e) { alert(e.message); }
+    allProducts = await api('/products');
+    renderProductsTable(allProducts);
+  } catch (e) { console.error(e); }
 }
 
 async function deleteProduct(id) {
@@ -859,26 +1085,39 @@ async function deleteProduct(id) {
   try {
     await api(`/products?id=${id}`, 'DELETE');
     showToast({ title: 'Product deleted', entries: [] });
-    await loadProducts();
-  } catch (e) { alert(e.message); }
+    allProducts = await api('/products');
+    renderProductsTable(allProducts);
+  } catch (e) {
+    showToast({ title: e.message, entries: [], hasAnomaly: true });
+  }
 }
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
 function showOutstanding() { showOutstandingFiltered(0, 9999); }
 
 function showOutstandingFiltered(minDays, maxDays) {
-  const now = new Date();
-  const filtered = allFirms.filter(f => {
-    if (!f.balance || f.balance <= 0) return false;
-    return true;
-  }).sort((a, b) => b.balance - a.balance);
+  const filtered = allFirms
+    .filter(f => f.balance && f.balance > 0)
+    .sort((a, b) => b.balance - a.balance);
 
   showModal(`
     <div class="modal-title">Outstanding balances</div>
     <table style="table-layout:auto;width:100%">
       <thead><tr><th>#</th><th>Client</th><th style="text-align:right">Balance</th></tr></thead>
-      <tbody>${filtered.map((f, i) => `<tr><td>${i + 1}</td><td>${f.name}</td><td style="text-align:right" class="red">${fmt(f.balance)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="2" style="font-weight:500;padding-top:8px">Total</td><td style="text-align:right;font-weight:500;padding-top:8px" class="red">${fmt(filtered.reduce((s, f) => s + f.balance, 0))}</td></tr></tfoot>
+      <tbody>${filtered.map((f, i) => `
+        <tr>
+          <td>${i + 1}</td><td>${f.name}</td>
+          <td style="text-align:right" class="red">${fmt(f.balance)}</td>
+        </tr>`).join('')}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" style="font-weight:500;padding-top:8px">Total</td>
+          <td style="text-align:right;font-weight:500;padding-top:8px" class="red">
+            ${fmt(filtered.reduce((s, f) => s + f.balance, 0))}
+          </td>
+        </tr>
+      </tfoot>
     </table>
     <div class="btn-row" style="margin-top:1rem">
       <button class="btn-primary" onclick="window.print()"><i class="ti ti-printer"></i> Print</button>
@@ -896,40 +1135,67 @@ async function showDailySummary() {
 
 async function loadDailySummary() {
   const date = document.getElementById('ds-date').value;
+  showLoading('ds-result', 'Loading...');
   try {
     const data = await api(`/bills?today=1`);
     const filtered = data.filter(b => b.bill_date === date);
     const total = filtered.reduce((s, b) => s + b.total_amount, 0);
     document.getElementById('ds-result').innerHTML = filtered.length === 0
-      ? '<p style="color:#888;font-size:13px">No bills on this date.</p>'
+      ? '<p class="empty-state">No bills on this date.</p>'
       : `<table style="table-layout:auto;width:100%">
           <thead><tr><th>Bill #</th><th>Client</th><th>Type</th><th style="text-align:right">Amount</th></tr></thead>
-          <tbody>${filtered.map(b => `<tr><td>${b.id}</td><td>${b.firms?.name || '—'}</td><td><span class="badge ${b.is_credit ? 'badge-credit' : 'badge-cash'}">${b.is_credit ? 'Credit' : 'Cash'}</span></td><td style="text-align:right">${fmt(b.total_amount)}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><td colspan="3" style="font-weight:500;padding-top:8px">Total</td><td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td></tr></tfoot>
+          <tbody>${filtered.map(b => `
+            <tr>
+              <td>${b.id}</td>
+              <td>${b.firms?.name || '—'}</td>
+              <td><span class="badge ${b.is_credit ? 'badge-credit' : 'badge-cash'}">${b.is_credit ? 'Credit' : 'Cash'}</span></td>
+              <td style="text-align:right">${fmt(b.total_amount)}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" style="font-weight:500;padding-top:8px">Total</td>
+              <td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td>
+            </tr>
+          </tfoot>
         </table>`;
-  } catch (e) { alert(e.message); }
+  } catch (e) { showError('ds-result', 'Failed to load.'); }
 }
 
 async function showReprintBill() {
   showModal(`
     <div class="modal-title">Reprint bill</div>
-    <div class="fg"><label>Search by Bill # or client name</label><input type="text" id="reprint-q" placeholder="e.g. 13472 or Malik Arshad" oninput="searchReprintBills()"></div>
+    <div class="fg">
+      <label>Search by Bill # or client name</label>
+      <input type="text" id="reprint-q" placeholder="e.g. 13472 or Malik Arshad" oninput="searchReprintBills()">
+    </div>
     <div id="reprint-results"></div>`);
 }
 
 async function searchReprintBills() {
   const q = document.getElementById('reprint-q').value.trim().toLowerCase();
   if (!q) return;
+  showLoading('reprint-results', 'Searching...');
   try {
     const data = await api('/bills');
-    const filtered = data.filter(b => String(b.id).includes(q) || b.firms?.name?.toLowerCase().includes(q)).slice(0, 10);
+    const filtered = data
+      .filter(b => String(b.id).includes(q) || b.firms?.name?.toLowerCase().includes(q))
+      .slice(0, 10);
     document.getElementById('reprint-results').innerHTML = filtered.length === 0
-      ? '<p style="color:#888;font-size:13px;margin-top:8px">No bills found.</p>'
+      ? '<p class="empty-state">No bills found.</p>'
       : `<table style="table-layout:auto;width:100%;margin-top:8px">
           <thead><tr><th>Bill #</th><th>Client</th><th>Date</th><th style="text-align:right">Amount</th><th></th></tr></thead>
-          <tbody>${filtered.map(b => `<tr><td>${b.id}</td><td>${b.firms?.name || '—'}</td><td>${fmtDate(b.bill_date)}</td><td style="text-align:right">${fmt(b.total_amount)}</td><td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="reprintBill(${b.id})"><i class="ti ti-printer"></i></button></td></tr>`).join('')}</tbody>
-        </table>`;
-  } catch (e) { }
+          <tbody>${filtered.map(b => `
+            <tr>
+              <td>${b.id}</td><td>${b.firms?.name || '—'}</td>
+              <td>${fmtDate(b.bill_date)}</td>
+              <td style="text-align:right">${fmt(b.total_amount)}</td>
+              <td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="reprintBill(${b.id})">
+                <i class="ti ti-printer"></i>
+              </button></td>
+            </tr>`).join('')}
+          </tbody></table>`;
+  } catch (e) { showError('reprint-results', 'Search failed.'); }
 }
 
 async function reprintBill(id) {
@@ -947,12 +1213,26 @@ async function reprintBill(id) {
           <div class="print-sub">Ph: 051-XXXXXXX</div>
         </div>
         <div class="print-meta">
-          <div><strong>Bill #:</strong> ${bill.id}${bill.bilty_no ? `<br><strong>Bilty #:</strong> ${bill.bilty_no}` : ''}${bill.do_no ? `<br><strong>D/O #:</strong> ${bill.do_no}` : ''}</div>
-          <div style="text-align:right"><strong>Date:</strong> ${fmtDate(bill.bill_date)}<br><strong>Type:</strong> ${bill.is_credit ? 'Credit' : 'Cash'}<br><strong>Client:</strong> ${firm?.name || '—'}</div>
+          <div>
+            <strong>Bill #:</strong> ${bill.id}
+            ${bill.bilty_no ? `<br><strong>Bilty #:</strong> ${bill.bilty_no}` : ''}
+            ${bill.do_no ? `<br><strong>D/O #:</strong> ${bill.do_no}` : ''}
+          </div>
+          <div style="text-align:right">
+            <strong>Date:</strong> ${fmtDate(bill.bill_date)}<br>
+            <strong>Type:</strong> ${bill.is_credit ? 'Credit' : 'Cash'}<br>
+            <strong>Client:</strong> ${firm?.name || '—'}
+          </div>
         </div>
         <table class="print-table">
           <thead><tr><th>#</th><th>Particular</th><th>Colour</th><th>Size</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
-          <tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td>${item.product_name}</td><td>${item.colour || ''}</td><td>${item.size || ''}</td><td>${item.quantity}</td><td>${fmtNum(item.price)}</td><td>${fmtNum(item.total)}</td></tr>`).join('')}</tbody>
+          <tbody>${items.map((item, i) => `
+            <tr>
+              <td>${i + 1}</td><td>${item.product_name}</td>
+              <td>${item.colour || ''}</td><td>${item.size || ''}</td>
+              <td>${item.quantity}</td><td>${fmtNum(item.price)}</td><td>${fmtNum(item.total)}</td>
+            </tr>`).join('')}
+          </tbody>
         </table>
         <div class="print-totals">
           ${bill.bilty_charges ? `<div>Bilty charges: ${fmtNum(bill.bilty_charges)}</div>` : ''}
@@ -967,7 +1247,7 @@ async function reprintBill(id) {
     document.getElementById('print-content').innerHTML = html;
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-print').classList.add('active');
-  } catch (e) { alert(e.message); }
+  } catch (e) { console.error(e); }
 }
 
 // ─── BACKUP ───────────────────────────────────────────────────────────────────
@@ -985,5 +1265,5 @@ async function backupData() {
     a.click();
     URL.revokeObjectURL(url);
     showToast({ title: 'Backup downloaded', subtitle: `needlecraft_backup_${today()}.json`, entries: [] });
-  } catch (e) { alert('Backup failed: ' + e.message); }
+  } catch (e) { console.error('Backup failed:', e); }
 }

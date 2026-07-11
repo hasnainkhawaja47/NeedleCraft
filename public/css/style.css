@@ -179,3 +179,15 @@ tr:last-child td{border-bottom:none}
 .print-words{font-size:10px;color:#555;margin-top:3px;font-style:italic}
 .print-balances{display:flex;justify-content:space-between;margin-top:8px;font-size:11px;border-top:1px solid #eee;padding-top:6px}
 .print-footer{text-align:center;font-size:9px;color:#888;margin-top:12px;border-top:1px solid #eee;padding-top:8px}
+
+/* LOADING & ERROR STATES */
+.loading-state{display:flex;align-items:center;gap:10px;padding:1.5rem;color:#888;font-size:13px}
+.spinner{width:18px;height:18px;border:2px solid #e5e5e0;border-top-color:#1a1a2e;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-state{padding:1rem;color:#A32D2D;font-size:13px;display:flex;align-items:center;gap:6px}
+.empty-state{color:#888;font-size:13px;padding:12px}
+.inline-error{background:#FCEBEB;color:#791F1F;border:1px solid #F7C1C1;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:10px;display:none}
+
+/* SCROLLABLE CLIENT TABLE */
+.scroll-table-clients{max-height:500px;overflow-y:auto}
+.scroll-table{max-height:300px;overflow-y:auto}

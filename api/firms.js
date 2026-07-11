@@ -13,23 +13,49 @@ module.exports = async (req, res) => {
     if (method === 'GET') {
       if (query.id) {
         const { data } = await supabase.from('firms').select('*').eq('id', query.id).single();
-        // Calculate balance
-        const { data: bills } = await supabase.from('bills').select('total_amount').eq('firm_id', query.id);
-        const { data: pmts } = await supabase.from('payments').select('amount').eq('firm_id', query.id);
-        const balance = (bills || []).reduce((s, b) => s + b.total_amount, 0) - (pmts || []).reduce((s, p) => s + p.amount, 0);
+
+        // Get balance from ALL data including archive
+        const [
+          { data: bills }, { data: pmts },
+          { data: archBills }, { data: archPmts }
+        ] = await Promise.all([
+          supabase.from('bills').select('total_amount').eq('firm_id', query.id),
+          supabase.from('payments').select('amount').eq('firm_id', query.id),
+          supabase.from('archive_bills').select('total_amount').eq('firm_id', query.id),
+          supabase.from('archive_payments').select('amount').eq('firm_id', query.id),
+        ]);
+
+        const balance =
+          (bills || []).reduce((s, b) => s + b.total_amount, 0) +
+          (archBills || []).reduce((s, b) => s + b.total_amount, 0) -
+          (pmts || []).reduce((s, p) => s + p.amount, 0) -
+          (archPmts || []).reduce((s, p) => s + p.amount, 0);
+
         return res.json({ ...data, balance });
       }
 
-      // All firms with balances
+      // All firms with balances including archive
       const { data: firms } = await supabase.from('firms').select('*').order('name');
-      const { data: allBills } = await supabase.from('bills').select('firm_id, total_amount');
-      const { data: allPmts } = await supabase.from('payments').select('firm_id, amount');
+      const [
+        { data: allBills }, { data: allPmts },
+        { data: archBills }, { data: archPmts }
+      ] = await Promise.all([
+        supabase.from('bills').select('firm_id, total_amount'),
+        supabase.from('payments').select('firm_id, amount'),
+        supabase.from('archive_bills').select('firm_id, total_amount'),
+        supabase.from('archive_payments').select('firm_id, amount'),
+      ]);
 
       const billMap = {}, pmtMap = {};
       (allBills || []).forEach(b => { billMap[b.firm_id] = (billMap[b.firm_id] || 0) + b.total_amount; });
       (allPmts || []).forEach(p => { pmtMap[p.firm_id] = (pmtMap[p.firm_id] || 0) + p.amount; });
+      (archBills || []).forEach(b => { billMap[b.firm_id] = (billMap[b.firm_id] || 0) + b.total_amount; });
+      (archPmts || []).forEach(p => { pmtMap[p.firm_id] = (pmtMap[p.firm_id] || 0) + p.amount; });
 
-      const result = (firms || []).map(f => ({ ...f, balance: (billMap[f.id] || 0) - (pmtMap[f.id] || 0) }));
+      const result = (firms || []).map(f => ({
+        ...f,
+        balance: (billMap[f.id] || 0) - (pmtMap[f.id] || 0)
+      }));
       return res.json(result);
     }
 
@@ -46,7 +72,6 @@ module.exports = async (req, res) => {
     }
 
     if (method === 'DELETE') {
-      // Check if firm has bills or payments
       const { data: bills } = await supabase.from('bills').select('id').eq('firm_id', query.id).limit(1);
       const { data: pmts } = await supabase.from('payments').select('id').eq('firm_id', query.id).limit(1);
       if ((bills && bills.length > 0) || (pmts && pmts.length > 0)) {
