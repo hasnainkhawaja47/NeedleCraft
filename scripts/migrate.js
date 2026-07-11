@@ -306,6 +306,15 @@ async function importData(productMap) {
     if (!firmId) { unmatched.push({ source: 'Bills', row: JSON.stringify(bill), reason: 'Firm not found: ' + bill.Name }); continue; }
 
     const billRecord = {
+      // firm_id: firmId,
+      // bill_date: billDate,
+      // bilty_no: cleanStr(bill.Bilty_No) === 'Nil' ? '' : cleanStr(bill.Bilty_No),
+      // do_no: cleanStr(bill.D_O_No) === 'Nil' ? '' : cleanStr(bill.D_O_No),
+      // bilty_charges: parseInt(bill.Bilty_Charges) || 0,
+      // packaging_charges: parseFloat(bill.packaging_charges) || 0,
+      // total_amount: parseInt(bill.Total_Amount) || 0,
+      // is_credit: true,
+      id: parseInt(bill.Bill_No) || parseInt(bill.SNo),
       firm_id: firmId,
       bill_date: billDate,
       bilty_no: cleanStr(bill.Bilty_No) === 'Nil' ? '' : cleanStr(bill.Bilty_No),
@@ -314,6 +323,8 @@ async function importData(productMap) {
       packaging_charges: parseFloat(bill.packaging_charges) || 0,
       total_amount: parseInt(bill.Total_Amount) || 0,
       is_credit: true,
+      _sno: cleanStr(bill.SNo),
+      _is_archive: billDate < CUTOFF,
     };
 
     const isArchive = billDate < CUTOFF;
