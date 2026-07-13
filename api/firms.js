@@ -1,5 +1,29 @@
 const supabase = require('./_supabase');
 
+async function getClientBalance(firmId) {
+  const [
+    { data: bills },
+    { data: pmts },
+    { data: archBills },
+    { data: archPmts }
+  ] = await Promise.all([
+    supabase.from('bills').select('total_amount').eq('firm_id', firmId),
+    supabase.from('payments').select('amount').eq('firm_id', firmId),
+    supabase.from('archive_bills').select('total_amount').eq('firm_id', firmId),
+    supabase.from('archive_payments').select('amount').eq('firm_id', firmId),
+  ]);
+
+  const totalBilled =
+    (bills || []).reduce((s, b) => s + (b.total_amount || 0), 0) +
+    (archBills || []).reduce((s, b) => s + (b.total_amount || 0), 0);
+
+  const totalPaid =
+    (pmts || []).reduce((s, p) => s + (p.amount || 0), 0) +
+    (archPmts || []).reduce((s, p) => s + (p.amount || 0), 0);
+
+  return totalBilled - totalPaid;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -13,32 +37,19 @@ module.exports = async (req, res) => {
     if (method === 'GET') {
       if (query.id) {
         const { data } = await supabase.from('firms').select('*').eq('id', query.id).single();
-
-        // Get balance from ALL data including archive
-        const [
-          { data: bills }, { data: pmts },
-          { data: archBills }, { data: archPmts }
-        ] = await Promise.all([
-          supabase.from('bills').select('total_amount').eq('firm_id', query.id),
-          supabase.from('payments').select('amount').eq('firm_id', query.id),
-          supabase.from('archive_bills').select('total_amount').eq('firm_id', query.id),
-          supabase.from('archive_payments').select('amount').eq('firm_id', query.id),
-        ]);
-
-        const balance =
-          (bills || []).reduce((s, b) => s + b.total_amount, 0) +
-          (archBills || []).reduce((s, b) => s + b.total_amount, 0) -
-          (pmts || []).reduce((s, p) => s + p.amount, 0) -
-          (archPmts || []).reduce((s, p) => s + p.amount, 0);
-
+        const balance = await getClientBalance(query.id);
         return res.json({ ...data, balance });
       }
 
-      // All firms with balances including archive
       const { data: firms } = await supabase.from('firms').select('*').order('name');
+      if (!firms || !firms.length) return res.json([]);
+
+      // Fetch all balance data in 4 queries total
       const [
-        { data: allBills }, { data: allPmts },
-        { data: archBills }, { data: archPmts }
+        { data: allBills },
+        { data: allPmts },
+        { data: archBills },
+        { data: archPmts }
       ] = await Promise.all([
         supabase.from('bills').select('firm_id, total_amount'),
         supabase.from('payments').select('firm_id, amount'),
@@ -46,36 +57,54 @@ module.exports = async (req, res) => {
         supabase.from('archive_payments').select('firm_id, amount'),
       ]);
 
-      const billMap = {}, pmtMap = {};
-      (allBills || []).forEach(b => { billMap[b.firm_id] = (billMap[b.firm_id] || 0) + b.total_amount; });
-      (allPmts || []).forEach(p => { pmtMap[p.firm_id] = (pmtMap[p.firm_id] || 0) + p.amount; });
-      (archBills || []).forEach(b => { billMap[b.firm_id] = (billMap[b.firm_id] || 0) + b.total_amount; });
-      (archPmts || []).forEach(p => { pmtMap[p.firm_id] = (pmtMap[p.firm_id] || 0) + p.amount; });
+      // Build maps
+      const billedMap = {};
+      const paidMap = {};
 
-      const result = (firms || []).map(f => ({
+      (allBills || []).forEach(b => {
+        billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0);
+      });
+      (archBills || []).forEach(b => {
+        billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0);
+      });
+      (allPmts || []).forEach(p => {
+        paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0);
+      });
+      (archPmts || []).forEach(p => {
+        paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0);
+      });
+
+      const result = firms.map(f => ({
         ...f,
-        balance: (billMap[f.id] || 0) - (pmtMap[f.id] || 0)
+        balance: (billedMap[f.id] || 0) - (paidMap[f.id] || 0)
       }));
+
       return res.json(result);
     }
 
     if (method === 'POST') {
-      const { data, error } = await supabase.from('firms').insert({ name: body.name }).select().single();
+      const { data, error } = await supabase
+        .from('firms').insert({ name: body.name }).select().single();
       if (error) return res.status(400).json({ error: error.message });
       return res.json(data);
     }
 
     if (method === 'PUT') {
-      const { data, error } = await supabase.from('firms').update({ name: body.name }).eq('id', query.id).select().single();
+      const { data, error } = await supabase
+        .from('firms').update({ name: body.name }).eq('id', query.id).select().single();
       if (error) return res.status(400).json({ error: error.message });
       return res.json(data);
     }
 
     if (method === 'DELETE') {
-      const { data: bills } = await supabase.from('bills').select('id').eq('firm_id', query.id).limit(1);
-      const { data: pmts } = await supabase.from('payments').select('id').eq('firm_id', query.id).limit(1);
+      const { data: bills } = await supabase
+        .from('bills').select('id').eq('firm_id', query.id).limit(1);
+      const { data: pmts } = await supabase
+        .from('payments').select('id').eq('firm_id', query.id).limit(1);
       if ((bills && bills.length > 0) || (pmts && pmts.length > 0)) {
-        return res.status(400).json({ error: 'Cannot delete: this client has bills or payments on record.' });
+        return res.status(400).json({
+          error: 'Cannot delete: this client has bills or payments on record.'
+        });
       }
       const { error } = await supabase.from('firms').delete().eq('id', query.id);
       if (error) return res.status(400).json({ error: error.message });

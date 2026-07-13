@@ -14,18 +14,29 @@ async function checkAnomalies(bill, firmId) {
   }
 
   // 2. Unusually large: > 3x average of last 10 bills
+  // const { data: lastBills } = await supabase.from('bills')
+  //   .select('total_amount')
+  //   .eq('firm_id', firmId)
+  //   .order('created_at', { ascending: false })
+  //   .limit(10);
+  // if (lastBills && lastBills.length >= 3) {
+  //   const avg = lastBills.reduce((s, b) => s + b.total_amount, 0) / lastBills.length;
+  //   if (bill.total_amount > avg * 3) {
+  //     anomalies.push({ type: 'Large Bill', firm_id: firmId, details: `₨${bill.total_amount.toLocaleString()} is ${Math.round(bill.total_amount / avg)}× the average of last ${lastBills.length} bills`, reference_type: 'bill' });
+  //   }
+  // }
+  // 2. Unusually large: > 3x average of last 10 bills (only if client has 5+ bills)
   const { data: lastBills } = await supabase.from('bills')
     .select('total_amount')
     .eq('firm_id', firmId)
     .order('created_at', { ascending: false })
     .limit(10);
-  if (lastBills && lastBills.length >= 3) {
+  if (lastBills && lastBills.length >= 5) {
     const avg = lastBills.reduce((s, b) => s + b.total_amount, 0) / lastBills.length;
-    if (bill.total_amount > avg * 3) {
+    if (avg > 0 && bill.total_amount > avg * 3) {
       anomalies.push({ type: 'Large Bill', firm_id: firmId, details: `₨${bill.total_amount.toLocaleString()} is ${Math.round(bill.total_amount / avg)}× the average of last ${lastBills.length} bills`, reference_type: 'bill' });
     }
   }
-
   return anomalies;
 }
 

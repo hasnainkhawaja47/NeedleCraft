@@ -72,6 +72,29 @@ function showInlineError(message, containerId) {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
+// document.addEventListener('DOMContentLoaded', async () => {
+//   if (!checkAuth()) return;
+
+//   document.getElementById('greeting').textContent = greeting();
+//   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
+//     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+//   });
+
+//   document.querySelectorAll('.nav-btn').forEach(btn => {
+//     btn.addEventListener('click', () => {
+//       const page = btn.dataset.page;
+//       showPage(page);
+//       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+//       btn.classList.add('active');
+//     });
+//   });
+
+//   showLoading('dash-metrics', 'Loading dashboard...');
+//   await loadFirms();
+//   await loadProducts();
+//   await loadDashboard();
+//   initPaymentsForm();
+// });
 document.addEventListener('DOMContentLoaded', async () => {
   if (!checkAuth()) return;
 
@@ -89,9 +112,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  showLoading('dash-metrics', 'Loading dashboard...');
-  await loadFirms();
-  await loadProducts();
+  showLoading('dash-metrics', 'Loading metrics...');
+  showLoading('aging-strip', '');
+  showLoading('anomaly-table-wrap', 'Checking for anomalies...');
+  showLoading('top-clients-table', 'Loading...');
+  showLoading('todays-bills-table', 'Loading...');
+
+  // Load firms and products in parallel, then dashboard
+  await Promise.all([loadFirms(), loadProductsPage()]);
   await loadDashboard();
   initPaymentsForm();
 });
@@ -834,7 +862,7 @@ function renderClientsTable(firms) {
           <tr>
             <td style="color:#888">${i + 1}</td>
             <td>${f.name}</td>
-            <td style="text-align:right" class="${f.balance > 0 ? 'red' : 'green'}">${fmt(f.balance || 0)}</td>
+            <td style="text-align:right" class="${f.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(f.balance || 0)}</td>
             <td><div class="action-btns">
               <button class="icon-btn" onclick="openLedger(${f.id})" title="View ledger"><i class="ti ti-book"></i></button>
               <button class="icon-btn del" onclick="deleteClient(${f.id})" title="Delete"><i class="ti ti-trash"></i></button>
@@ -924,8 +952,8 @@ async function loadLedger() {
 
     document.getElementById('ledger-metrics').innerHTML = `
       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
-      <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value green">${fmt(data.totalPaid)}</div></div>
-      <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'red' : 'green'}">${fmt(data.balance)}</div></div>`;
+      <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
+      <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
 
     if (!data.entries.length) {
       document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
