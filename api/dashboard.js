@@ -14,16 +14,37 @@ module.exports = async (req, res) => {
     if (!firms) return res.status(500).json({ error: 'Could not load firms' });
 
     // All 4 balance queries in parallel
-    const [
-      { data: allBills },
-      { data: allPmts },
-      { data: archBills },
-      { data: archPmts }
-    ] = await Promise.all([
-      supabase.from('bills').select('firm_id, total_amount, bill_date'),
-      supabase.from('payments').select('firm_id, amount, payment_date'),
-      supabase.from('archive_bills').select('firm_id, total_amount, bill_date'),
-      supabase.from('archive_payments').select('firm_id, amount, payment_date'),
+    // const [
+    //   { data: allBills },
+    //   { data: allPmts },
+    //   { data: archBills },
+    //   { data: archPmts }
+    // ] = await Promise.all([
+    //   supabase.from('bills').select('firm_id, total_amount, bill_date'),
+    //   supabase.from('payments').select('firm_id, amount, payment_date'),
+    //   supabase.from('archive_bills').select('firm_id, total_amount, bill_date'),
+    //   supabase.from('archive_payments').select('firm_id, amount, payment_date'),
+    // ]);
+    async function getAllRows(table, columns) {
+      let allRows = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from(table).select(columns).range(from, from + pageSize - 1);
+        if (error || !data || data.length === 0) break;
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return allRows;
+    }
+
+    const [allBills, allPmts, archBills, archPmts] = await Promise.all([
+      getAllRows('bills', 'firm_id, total_amount, bill_date'),
+      getAllRows('payments', 'firm_id, amount, payment_date'),
+      getAllRows('archive_bills', 'firm_id, total_amount, bill_date'),
+      getAllRows('archive_payments', 'firm_id, amount, payment_date'),
     ]);
 
     // Build balance maps — billed and paid separately, then combined
