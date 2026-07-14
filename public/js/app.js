@@ -1031,23 +1031,23 @@ async function loadLedger() {
         </thead>
         <tbody>
           ${data.entries.map(e => `
-            <tr>
-              <td style="color:#888;font-size:12px;white-space:nowrap">${fmtDate(e.date)}</td>
-              <td style="white-space:normal;font-size:13px">${e.description}</td>
-              <td style="text-align:right;white-space:nowrap">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
-              <td style="text-align:right;white-space:nowrap">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
-              <td style="text-align:right;white-space:nowrap" class="${e.balance > 0 ? 'balance-owed' : e.balance < 0 ? 'balance-clear' : ''}">${fmtNum(e.balance)}</td>
-              <td>
-                ${e.type === 'opening' ? '' : e.isActive ? `
-                  <div class="action-btns">
-                    ${e.type === 'bill'
+  <tr${e.type === 'opening' ? ' style="background:#fafaf8;font-style:italic"' : ''}>
+    <td style="color:#888;font-size:12px;white-space:nowrap">${fmtDate(e.date)}</td>
+    <td style="white-space:normal;font-size:13px;color:${e.type === 'opening' ? '#888' : 'inherit'}">${e.description}</td>
+    <td style="text-align:right;white-space:nowrap;color:#888">${e.type === 'opening' ? '—' : e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
+    <td style="text-align:right;white-space:nowrap;color:#888">${e.type === 'opening' ? '—' : e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
+    <td style="text-align:right;white-space:nowrap;font-weight:500" class="${e.balance > 0 ? 'balance-owed' : e.balance < 0 ? 'balance-clear' : ''}">${fmtNum(e.balance)}</td>
+    <td>
+      ${e.type === 'opening' ? '' : e.isActive ? `
+        <div class="action-btns">
+          ${e.type === 'bill'
           ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
-                         <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`
+               <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`
           : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
-                         <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`}
-                  </div>` : '<span style="font-size:10px;color:#bbb">archive</span>'}
-              </td>
-            </tr>`).join('')}
+               <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`}
+        </div>` : '<span style="font-size:10px;color:#bbb">archive</span>'}
+    </td>
+  </tr>`).join('')}
         </tbody>
       </table>`;
   } catch (e) {

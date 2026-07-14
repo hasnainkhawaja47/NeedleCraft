@@ -89,14 +89,25 @@ module.exports = async (req, res) => {
     // Build combined entries from both active and archive
     const entries = [];
 
-    if (openingBalance !== 0 && fromDate) {
+    // if (openingBalance !== 0 && fromDate) {
+    //   entries.push({
+    //     date: fromDate,
+    //     type: 'opening',
+    //     id: null,
+    //     description: 'Opening balance brought forward',
+    //     credit: openingBalance > 0 ? openingBalance : 0,
+    //     debit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
+    //   });
+    // }
+    if (fromDate) {
       entries.push({
         date: fromDate,
         type: 'opening',
         id: null,
         description: 'Opening balance brought forward',
-        credit: openingBalance > 0 ? openingBalance : 0,
-        debit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
+        credit: 0,
+        debit: 0,
+        openingBalance: openingBalance,
       });
     }
 
@@ -143,8 +154,15 @@ module.exports = async (req, res) => {
     });
 
     // Running balance starting from opening balance
-    let running = openingBalance;
-    if (!fromDate) running = 0;
+    // let running = openingBalance;
+    // if (!fromDate) running = 0;
+    // entries.forEach(e => {
+    //   if (e.type !== 'opening') {
+    //     running += e.credit - e.debit;
+    //   }
+    //   e.balance = running;
+    // });
+    let running = fromDate ? openingBalance : 0;
     entries.forEach(e => {
       if (e.type !== 'opening') {
         running += e.credit - e.debit;
