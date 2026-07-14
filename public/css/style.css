@@ -1201,42 +1201,33 @@ tr:last-child td {
   z-index: 1;
 } */
 
-/* LEDGER — only table body scrolls, header stays fixed */
-#page-ledger>.content-inner,
-#page-ledger {
-  overflow: hidden;
-}
-
+/* LEDGER TABLE - scrollable body only */
 #page-ledger .card {
+  padding: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 310px);
 }
 
-#page-ledger .card table {
-  display: block;
-  overflow-y: auto;
-}
-
-#page-ledger .card table thead {
+#page-ledger .card table thead th {
   position: sticky;
   top: 0;
   background: #fff;
   z-index: 2;
-  display: table;
-  width: 100%;
-  table-layout: auto;
+  padding: 8px 12px;
 }
 
 #page-ledger .card table tbody {
   display: block;
+  max-height: calc(100vh - 360px);
   overflow-y: auto;
-  max-height: calc(100vh - 380px);
 }
 
+#page-ledger .card table thead,
 #page-ledger .card table tbody tr {
   display: table;
   width: 100%;
   table-layout: auto;
+}
+
+#page-ledger .card table td {
+  padding: 8px 12px;
 }

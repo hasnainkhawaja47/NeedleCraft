@@ -936,6 +936,62 @@ async function openLedger(firmId) {
   await loadLedger();
 }
 
+// async function loadLedger() {
+//   if (!currentLedgerFirmId) return;
+//   showLoading('ledger-table', 'Loading ledger...');
+//   showLoading('ledger-metrics', '');
+
+//   const from = document.getElementById('ledger-from').value;
+//   const to = document.getElementById('ledger-to').value;
+//   let url = `/ledger?firm_id=${currentLedgerFirmId}`;
+//   if (from) url += `&from=${from}`;
+//   if (to) url += `&to=${to}`;
+
+//   try {
+//     const data = await api(url);
+
+//     document.getElementById('ledger-metrics').innerHTML = `
+//       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
+//       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
+//       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
+
+//     if (!data.entries.length) {
+//       document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
+//       return;
+//     }
+
+//     document.getElementById('ledger-table').innerHTML = `
+//       <table style="table-layout:auto">
+//         <thead><tr>
+//           <th style="width:95px">Date</th>
+//           <th>Description</th>
+//           <th style="text-align:right;width:95px">Credit</th>
+//           <th style="text-align:right;width:95px">Debit</th>
+//           <th style="text-align:right;width:95px">Balance</th>
+//           <th style="width:65px"></th>
+//         </tr></thead>
+//         <tbody>${data.entries.map(e => `
+//           <tr>
+//             <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
+//             <td>${e.description}</td>
+//             <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
+//             <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
+//             <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
+//             <td>${e.type === 'opening' ? '' : `
+//               <div class="action-btns">
+//                 ${e.type === 'bill'
+//           ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>
+//                      <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete bill"><i class="ti ti-trash"></i></button>`
+//           : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>
+//                      <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete payment"><i class="ti ti-trash"></i></button>`}
+//               </div>`}
+//             </td>
+//           </tr>`).join('')}
+//         </tbody>
+//       </table>`;
+//   } catch (e) { showError('ledger-table', 'Failed to load ledger.'); }
+// }
+
 async function loadLedger() {
   if (!currentLedgerFirmId) return;
   showLoading('ledger-table', 'Loading ledger...');
@@ -943,6 +999,7 @@ async function loadLedger() {
 
   const from = document.getElementById('ledger-from').value;
   const to = document.getElementById('ledger-to').value;
+
   let url = `/ledger?firm_id=${currentLedgerFirmId}`;
   if (from) url += `&from=${from}`;
   if (to) url += `&to=${to}`;
@@ -961,35 +1018,41 @@ async function loadLedger() {
     }
 
     document.getElementById('ledger-table').innerHTML = `
-      <table style="table-layout:auto">
-        <thead><tr>
-          <th style="width:95px">Date</th>
-          <th>Description</th>
-          <th style="text-align:right;width:95px">Credit</th>
-          <th style="text-align:right;width:95px">Debit</th>
-          <th style="text-align:right;width:95px">Balance</th>
-          <th style="width:65px"></th>
-        </tr></thead>
-        <tbody>${data.entries.map(e => `
+      <table style="table-layout:auto;width:100%">
+        <thead>
           <tr>
-            <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
-            <td>${e.description}</td>
-            <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
-            <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
-            <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
-            <td>${e.type === 'opening' ? '' : `
-              <div class="action-btns">
-                ${e.type === 'bill'
-          ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>
-                     <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete bill"><i class="ti ti-trash"></i></button>`
-          : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>
-                     <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete payment"><i class="ti ti-trash"></i></button>`}
-              </div>`}
-            </td>
-          </tr>`).join('')}
+            <th style="width:100px">Date</th>
+            <th>Description</th>
+            <th style="text-align:right;width:100px">Credit</th>
+            <th style="text-align:right;width:100px">Debit</th>
+            <th style="text-align:right;width:100px">Balance</th>
+            <th style="width:65px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.entries.map(e => `
+            <tr>
+              <td style="color:#888;font-size:12px;white-space:nowrap">${fmtDate(e.date)}</td>
+              <td style="white-space:normal;font-size:13px">${e.description}</td>
+              <td style="text-align:right;white-space:nowrap">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
+              <td style="text-align:right;white-space:nowrap">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
+              <td style="text-align:right;white-space:nowrap" class="${e.balance > 0 ? 'balance-owed' : e.balance < 0 ? 'balance-clear' : ''}">${fmtNum(e.balance)}</td>
+              <td>
+                ${e.type === 'opening' ? '' : e.isActive ? `
+                  <div class="action-btns">
+                    ${e.type === 'bill'
+          ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
+                         <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`
+          : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
+                         <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`}
+                  </div>` : '<span style="font-size:10px;color:#bbb">archive</span>'}
+              </td>
+            </tr>`).join('')}
         </tbody>
       </table>`;
-  } catch (e) { showError('ledger-table', 'Failed to load ledger.'); }
+  } catch (e) {
+    showError('ledger-table', 'Failed to load ledger: ' + e.message);
+  }
 }
 
 function clearLedgerFilter() {

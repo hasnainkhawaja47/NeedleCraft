@@ -1,5 +1,38 @@
 const supabase = require('./_supabase');
 
+async function getRows(table, columns, firmId, from, to) {
+  let allRows = [];
+  let start = 0;
+  const pageSize = 1000;
+  while (true) {
+    let q = supabase.from(table).select(columns).eq('firm_id', firmId);
+    if (from) q = q.gte(table.includes('bill') ? 'bill_date' : 'payment_date', from);
+    if (to) q = q.lte(table.includes('bill') ? 'bill_date' : 'payment_date', to);
+    const { data, error } = await q.range(start, start + pageSize - 1);
+    if (error || !data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    start += pageSize;
+  }
+  return allRows;
+}
+
+async function getAllRows(table, columns, firmId) {
+  let allRows = [];
+  let start = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from(table).select(columns).eq('firm_id', firmId)
+      .range(start, start + pageSize - 1);
+    if (error || !data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    start += pageSize;
+  }
+  return allRows;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -8,64 +41,55 @@ module.exports = async (req, res) => {
   if (!firm_id) return res.status(400).json({ error: 'firm_id required' });
 
   try {
-    // Default from date is 2024-01-01 if not specified
-    const fromDate = from || '2024-01-01';
+    const fromDate = from || null;
     const toDate = to || null;
 
-    // Active data query
-    let activeBillsQ = supabase.from('bills')
-      .select('id, bill_date, total_amount, bilty_no, do_no, is_credit')
-      .eq('firm_id', firm_id)
-      .gte('bill_date', fromDate);
-    if (toDate) activeBillsQ = activeBillsQ.lte('bill_date', toDate);
-
-    let activePmtsQ = supabase.from('payments')
-      .select('id, payment_date, amount, method, bank_name, cheque_number, memo')
-      .eq('firm_id', firm_id)
-      .gte('payment_date', fromDate);
-    if (toDate) activePmtsQ = activePmtsQ.lte('payment_date', toDate);
-
-    // Archive data query
-    let archiveBillsQ = supabase.from('archive_bills')
-      .select('id, bill_date, total_amount, bilty_no, do_no, is_credit')
-      .eq('firm_id', firm_id)
-      .gte('bill_date', fromDate);
-    if (toDate) archiveBillsQ = archiveBillsQ.lte('bill_date', toDate);
-
-    let archivePmtsQ = supabase.from('archive_payments')
-      .select('id, payment_date, amount, method, bank_name, cheque_number, memo')
-      .eq('firm_id', firm_id)
-      .gte('payment_date', fromDate);
-    if (toDate) archivePmtsQ = archivePmtsQ.lte('payment_date', toDate);
-
+    // Fetch entries within the date range from BOTH active and archive tables
     const [
-      { data: activeBills },
-      { data: activePmts },
-      { data: archiveBills },
-      { data: archivePmts }
-    ] = await Promise.all([activeBillsQ, activePmtsQ, archiveBillsQ, archivePmtsQ]);
+      activeBills,
+      activePmts,
+      archiveBills,
+      archivePmts
+    ] = await Promise.all([
+      getRows('bills', 'id, bill_date, total_amount, bilty_no, do_no, is_credit', firm_id, fromDate, toDate),
+      getRows('payments', 'id, payment_date, amount, method, bank_name, cheque_number, memo', firm_id, fromDate, toDate),
+      getRows('archive_bills', 'id, bill_date, total_amount, bilty_no, do_no, is_credit', firm_id, fromDate, toDate),
+      getRows('archive_payments', 'id, payment_date, amount, method, bank_name, cheque_number, memo', firm_id, fromDate, toDate),
+    ]);
 
-    // Also get opening balance (everything before fromDate)
-    const { data: allBillsBefore } = await supabase.from('bills')
-      .select('total_amount').eq('firm_id', firm_id).lt('bill_date', fromDate);
-    const { data: allPmtsBefore } = await supabase.from('payments')
-      .select('amount').eq('firm_id', firm_id).lt('payment_date', fromDate);
-    const { data: archBillsBefore } = await supabase.from('archive_bills')
-      .select('total_amount').eq('firm_id', firm_id).lt('bill_date', fromDate);
-    const { data: archPmtsBefore } = await supabase.from('archive_payments')
-      .select('amount').eq('firm_id', firm_id).lt('payment_date', fromDate);
+    // Calculate opening balance = everything BEFORE fromDate (both active and archive)
+    let openingBalance = 0;
+    if (fromDate) {
+      const [
+        allBillsBefore,
+        allPmtsBefore,
+        archBillsBefore,
+        archPmtsBefore
+      ] = await Promise.all([
+        getAllRows('bills', 'total_amount, bill_date', firm_id),
+        getAllRows('payments', 'amount, payment_date', firm_id),
+        getAllRows('archive_bills', 'total_amount, bill_date', firm_id),
+        getAllRows('archive_payments', 'amount, payment_date', firm_id),
+      ]);
 
-    const openingBalance =
-      (allBillsBefore || []).reduce((s, b) => s + b.total_amount, 0) +
-      (archBillsBefore || []).reduce((s, b) => s + b.total_amount, 0) -
-      (allPmtsBefore || []).reduce((s, p) => s + p.amount, 0) -
-      (archPmtsBefore || []).reduce((s, p) => s + p.amount, 0);
+      const billsBefore = [
+        ...allBillsBefore.filter(b => b.bill_date < fromDate),
+        ...archBillsBefore.filter(b => b.bill_date < fromDate),
+      ];
+      const pmtsBefore = [
+        ...allPmtsBefore.filter(p => p.payment_date < fromDate),
+        ...archPmtsBefore.filter(p => p.payment_date < fromDate),
+      ];
 
-    // Build combined entries
+      openingBalance =
+        billsBefore.reduce((s, b) => s + (b.total_amount || 0), 0) -
+        pmtsBefore.reduce((s, p) => s + (p.amount || 0), 0);
+    }
+
+    // Build combined entries from both active and archive
     const entries = [];
 
-    // Add opening balance row if non-zero
-    if (openingBalance !== 0 && from) {
+    if (openingBalance !== 0 && fromDate) {
       entries.push({
         date: fromDate,
         type: 'opening',
@@ -73,55 +97,72 @@ module.exports = async (req, res) => {
         description: 'Opening balance brought forward',
         credit: openingBalance > 0 ? openingBalance : 0,
         debit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
-        isArchive: false
       });
     }
 
-    const allBills = [...(activeBills || []), ...(archiveBills || [])];
-    const allPmts = [...(activePmts || []), ...(archivePmts || [])];
+    const allBills = [...activeBills, ...archiveBills];
+    const allPmts = [...activePmts, ...archivePmts];
+    const activeIds = new Set(activeBills.map(b => b.id));
 
-    allBills.forEach(b => entries.push({
-      date: b.bill_date,
-      type: 'bill',
-      id: b.id,
-      description: `Bill # ${b.id}${b.bilty_no ? ' · Bilty: ' + b.bilty_no : ''}`,
-      credit: b.total_amount,
-      debit: 0,
-      isArchive: !!(activeBills || []).find ? !(activeBills || []).find(ab => ab.id === b.id) : false
-    }));
+    allBills.forEach(b => {
+      entries.push({
+        date: b.bill_date,
+        type: 'bill',
+        id: b.id,
+        isActive: activeIds.has(b.id),
+        description: `Bill # ${b.id}${b.bilty_no ? ' · Bilty: ' + b.bilty_no : ''}`,
+        credit: b.total_amount || 0,
+        debit: 0,
+      });
+    });
 
+    const activePmtIds = new Set(activePmts.map(p => p.id));
     allPmts.forEach(p => {
-      const desc = p.bank_name && p.bank_name !== ''
-        ? `${p.method} — ${p.bank_name}${p.cheque_number ? ' · Ref: ' + p.cheque_number : ''}`
-        : p.method;
+      const bankPart = p.bank_name && p.bank_name !== ''
+        ? ` — ${p.bank_name}${p.cheque_number ? ' · Ref: ' + p.cheque_number : ''}`
+        : '';
       entries.push({
         date: p.payment_date,
         type: 'payment',
         id: p.id,
-        description: desc,
+        isActive: activePmtIds.has(p.id),
+        description: `${p.method}${bankPart}`,
         credit: 0,
-        debit: p.amount,
-        isArchive: false
+        debit: p.amount || 0,
       });
     });
 
+    // Sort by date, then bills before payments on same day
     entries.sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       if (a.type === 'opening') return -1;
       if (b.type === 'opening') return 1;
-      return a.type === 'bill' ? -1 : 1;
+      if (a.type === 'bill' && b.type !== 'bill') return -1;
+      if (b.type === 'bill' && a.type !== 'bill') return 1;
+      return 0;
     });
 
-    let running = openingBalance && !from ? 0 : (from ? 0 : 0);
+    // Running balance starting from opening balance
+    let running = openingBalance;
+    if (!fromDate) running = 0;
     entries.forEach(e => {
-      running += e.credit - e.debit;
+      if (e.type !== 'opening') {
+        running += e.credit - e.debit;
+      }
       e.balance = running;
     });
 
-    const totalBilled = entries.reduce((s, e) => s + e.credit, 0);
-    const totalPaid = entries.reduce((s, e) => s + e.debit, 0);
+    // Totals for the date range only (not including opening balance)
+    const totalBilled = allBills.reduce((s, b) => s + (b.total_amount || 0), 0);
+    const totalPaid = allPmts.reduce((s, p) => s + (p.amount || 0), 0);
 
-    res.json({ entries, totalBilled, totalPaid, balance: running });
+    res.json({
+      entries,
+      totalBilled,
+      totalPaid,
+      balance: running,
+      openingBalance,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
