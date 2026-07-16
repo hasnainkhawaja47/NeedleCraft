@@ -56,6 +56,36 @@ module.exports = async (req, res) => {
         const { data } = await supabase.from('bills').select('*, bill_items(*)').eq('id', query.id).single();
         return res.json(data);
       }
+      if (query.search) {
+        let allResults = [];
+        let start = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data } = await supabase
+            .from('bills').select('*, firms(name)')
+            .range(start, start + pageSize - 1)
+            .order('id', { ascending: false });
+          if (!data || data.length === 0) break;
+          allResults = allResults.concat(data);
+          if (data.length < pageSize) break;
+          start += pageSize;
+        }
+
+        const { from, to, do_no, bill_no } = query;
+        let filtered = allResults;
+
+        if (bill_no) {
+          filtered = filtered.filter(b => String(b.id).includes(bill_no.trim()));
+        } else if (do_no) {
+          filtered = filtered.filter(b => b.do_no && b.do_no.toLowerCase().includes(do_no.trim().toLowerCase()));
+        } else if (from || to) {
+          if (from) filtered = filtered.filter(b => b.bill_date >= from);
+          if (to) filtered = filtered.filter(b => b.bill_date <= to);
+        }
+
+        return res.json(filtered);
+      }
+
       if (query.today) {
         const today = new Date().toISOString().split('T')[0];
         const { data } = await supabase.from('bills').select('*, firms(name)').eq('bill_date', today).order('id', { ascending: false });
