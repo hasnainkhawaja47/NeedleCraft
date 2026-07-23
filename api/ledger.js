@@ -99,7 +99,7 @@ module.exports = async (req, res) => {
     //     debit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
     //   });
     // }
-    if (fromDate) {
+    if (fromDate && openingBalance !== 0) {
       entries.push({
         date: fromDate,
         type: 'opening',
