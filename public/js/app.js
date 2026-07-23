@@ -626,8 +626,7 @@ function previewPrint() {
     <div class="print-doc">
       <div class="print-header">
         <div class="print-logo">NEEDLE CRAFT</div>
-        <div class="print-sub">Wholesale Garments — Rawalpindi</div>
-        <div class="print-sub">Ph: 051-XXXXXXX</div>
+        <div class="print-sub">Ph: 051-5540343</div>
       </div>
       <div class="print-meta">
         <div>
@@ -661,7 +660,7 @@ function previewPrint() {
         <div>Previous balance: Rs. ${fmtNum(prevBal)}</div>
         <div><strong>New balance: Rs. ${fmtNum(newBal)}</strong></div>
       </div>
-      <div class="print-footer">Thank you for your business &nbsp;·&nbsp; Needle Craft</div>
+      <div class="print-footer">Thank you for your business</div>
     </div>`;
 
   document.getElementById('print-content').innerHTML = html;
