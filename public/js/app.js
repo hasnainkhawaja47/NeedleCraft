@@ -123,7 +123,16 @@ function showInlineError(message, containerId) {
   setTimeout(() => { if (errEl) errEl.style.display = 'none'; }, 4000);
   return errEl;
 }
-
+function setButtonLoading(btn, loading, originalText) {
+  if (loading) {
+    btn.disabled = true;
+    btn.dataset.original = btn.innerHTML;
+    btn.innerHTML = `<span style="width:14px;height:14px;border:2px solid rgba(200,169,81,0.3);border-top-color:#C8A951;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle"></span> Saving...`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.original || originalText;
+  }
+}
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // document.addEventListener('DOMContentLoaded', async () => {
 //   if (!checkAuth()) return;
@@ -586,145 +595,153 @@ function showBillError(message) {
 }
 
 async function saveBill() {
-  const firmId = parseInt(document.getElementById('bill-firm-id').value);
-  if (!firmId) { showBillError('Please select a client before saving.'); return; }
-  const billDate = document.getElementById('bill-date').value;
-  if (!billDate) { showBillError('Please enter a date.'); return; }
-  const items = collectBillItems();
-  if (items.length === 0) { showBillError('Please add at least one item with quantity and price.'); return; }
+  async function saveBill() {
+    const saveBtn = document.querySelector('#page-new-bill .btn-primary');
+    setButtonLoading(saveBtn, true);
+    const firmId = parseInt(document.getElementById('bill-firm-id').value);
+    if (!firmId) { showBillError('Please select a client before saving.'); return; }
+    const billDate = document.getElementById('bill-date').value;
+    if (!billDate) { showBillError('Please enter a date.'); return; }
+    const items = collectBillItems();
+    if (items.length === 0) { showBillError('Please add at least one item with quantity and price.'); return; }
 
-  const total = items.reduce((s, i) => s + i.total, 0)
-    + (parseInt(document.getElementById('bill-bilty-charges').value) || 0)
-    + (parseInt(document.getElementById('bill-pkg-charges').value) || 0);
+    const total = items.reduce((s, i) => s + i.total, 0)
+      + (parseInt(document.getElementById('bill-bilty-charges').value) || 0)
+      + (parseInt(document.getElementById('bill-pkg-charges').value) || 0);
 
-  const billData = {
-    firm_id: firmId,
-    bill_date: billDate,
-    bilty_no: document.getElementById('bill-bilty').value,
-    do_no: document.getElementById('bill-do').value,
-    bilty_charges: parseInt(document.getElementById('bill-bilty-charges').value) || 0,
-    packaging_charges: parseInt(document.getElementById('bill-pkg-charges').value) || 0,
-    total_amount: total,
-    is_credit: document.getElementById('bill-type').value === 'credit',
-    items
-  };
+    const billData = {
+      firm_id: firmId,
+      bill_date: billDate,
+      bilty_no: document.getElementById('bill-bilty').value,
+      do_no: document.getElementById('bill-do').value,
+      bilty_charges: parseInt(document.getElementById('bill-bilty-charges').value) || 0,
+      packaging_charges: parseInt(document.getElementById('bill-pkg-charges').value) || 0,
+      total_amount: total,
+      is_credit: document.getElementById('bill-type').value === 'credit',
+      items
+    };
 
-  try {
-    let result;
-    if (editingBillId) {
-      result = await api(`/bills?id=${editingBillId}`, 'PUT', billData);
-      result.anomalies = [];
-    } else {
-      result = await api('/bills', 'POST', billData);
+    try {
+      let result;
+      if (editingBillId) {
+        result = await api(`/bills?id=${editingBillId}`, 'PUT', billData);
+        result.anomalies = [];
+      } else {
+        result = await api('/bills', 'POST', billData);
+      }
+
+      const firm = allFirms.find(f => f.id === firmId);
+      const hasAnomaly = result.anomalies && result.anomalies.length > 0;
+
+      const toastEntries = (result.recentBills || []).map(b => ({
+        date: fmtDate(b.bill_date),
+        desc: `Bill # ${b.id}`,
+        amount: fmt(b.total_amount),
+        highlight: hasAnomaly && b.total_amount === total && b.id !== result.bill?.id
+      }));
+
+      showToast({
+        title: hasAnomaly
+          ? `Bill saved — ${result.anomalies[0].type} detected`
+          : (editingBillId ? 'Bill updated' : 'Bill saved'),
+        subtitle: `Recent entries — ${firm?.name || ''}`,
+        entries: toastEntries,
+        hasAnomaly,
+        firmId
+      });
+
+      editingBillId = null;
+
+      setButtonLoading(saveBtn, false);
+      initNewBillForm();
+      invalidatePage('clients');
+      invalidatePage('payments');
+      await loadFirms();
+    } catch (e) {
+      setButtonLoading(saveBtn, false);
+      showBillError('Error saving bill: ' + e.message);
     }
-
-    const firm = allFirms.find(f => f.id === firmId);
-    const hasAnomaly = result.anomalies && result.anomalies.length > 0;
-
-    const toastEntries = (result.recentBills || []).map(b => ({
-      date: fmtDate(b.bill_date),
-      desc: `Bill # ${b.id}`,
-      amount: fmt(b.total_amount),
-      highlight: hasAnomaly && b.total_amount === total && b.id !== result.bill?.id
-    }));
-
-    showToast({
-      title: hasAnomaly
-        ? `Bill saved — ${result.anomalies[0].type} detected`
-        : (editingBillId ? 'Bill updated' : 'Bill saved'),
-      subtitle: `Recent entries — ${firm?.name || ''}`,
-      entries: toastEntries,
-      hasAnomaly,
-      firmId
-    });
-
-    editingBillId = null;
-    initNewBillForm();
-    invalidatePage('clients');
-    invalidatePage('payments');
-    await loadFirms();
-  } catch (e) { showBillError('Error saving bill: ' + e.message); }
-}
-
-async function editBill(id) {
-  try {
-    const bill = await api(`/bills?id=${id}`);
-    editingBillId = id;
-    showPage('new-bill');
-    document.querySelector('.nav-btn[data-page="new-bill"]').classList.add('active');
-    await new Promise(r => setTimeout(r, 50));
-
-    const firm = allFirms.find(f => f.id === bill.firm_id);
-    document.getElementById('bill-client-input').value = firm?.name || '';
-    document.getElementById('bill-firm-id').value = bill.firm_id;
-    document.getElementById('bill-date').value = bill.bill_date;
-    document.getElementById('bill-bilty').value = bill.bilty_no || '';
-    document.getElementById('bill-do').value = bill.do_no || '';
-    document.getElementById('bill-bilty-charges').value = bill.bilty_charges || 0;
-    document.getElementById('bill-pkg-charges').value = bill.packaging_charges || 0;
-    document.getElementById('next-bill-num').textContent = bill.id;
-
-    if (!bill.is_credit) {
-      document.querySelectorAll('#page-new-bill .tog-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector('#page-new-bill .tog-btn:first-child').classList.add('active');
-      document.getElementById('bill-type').value = 'cash';
-    }
-
-    const tbody = document.getElementById('bill-items-body');
-    tbody.innerHTML = '';
-    (bill.bill_items || []).forEach(item => {
-      addBillRow();
-      const row = tbody.lastElementChild;
-      row.querySelector('.particular-input').value = item.product_name;
-      row.cells[2].querySelector('input').value = item.colour || '';
-      row.cells[3].querySelector('input').value = item.size || '';
-      row.querySelectorAll('input[type=number]')[0].value = item.quantity || 0;
-      row.querySelectorAll('input[type=number]')[1].value = item.price || 0;
-      row.cells[6].textContent = fmtNum(item.total);
-    });
-    addBillRow();
-    recalcTotal();
-    await loadPrevBalance(bill.firm_id);
-
-    buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => {
-      await loadPrevBalance(id);
-    });
-  } catch (e) { showBillError('Error loading bill: ' + e.message); }
-}
-
-async function deleteBill(id) {
-  if (!window.confirm('Delete this bill? This cannot be undone.')) return;
-  try {
-    await api(`/bills?id=${id}`, 'DELETE');
-    showToast({ title: 'Bill deleted', entries: [] });
-    await loadFirms();
-    if (currentLedgerFirmId) loadLedger();
-    else loadDashboard();
-  } catch (e) {
-    showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
   }
-}
 
-// ─── PRINT ────────────────────────────────────────────────────────────────────
-function previewPrint() {
-  const firmId = document.getElementById('bill-firm-id').value;
-  if (!firmId) { showBillError('Please select a client first.'); return; }
-  const firm = allFirms.find(f => f.id == firmId);
-  const billDate = document.getElementById('bill-date').value;
-  const biltyNo = document.getElementById('bill-bilty').value;
-  const doNo = document.getElementById('bill-do').value;
-  const billType = document.getElementById('bill-type').value;
-  const items = collectBillItems();
-  if (!items.length) { showBillError('Please add items before printing.'); return; }
-  const biltyCharges = parseInt(document.getElementById('bill-bilty-charges').value) || 0;
-  const pkgCharges = parseInt(document.getElementById('bill-pkg-charges').value) || 0;
-  const grand = items.reduce((s, i) => s + i.total, 0) + biltyCharges + pkgCharges;
-  const prevBalText = document.getElementById('prev-bal-val')?.textContent?.replace(/[₨,\s]/g, '') || '0';
-  const prevBal = parseFloat(prevBalText) || 0;
-  const newBal = prevBal + grand;
-  const billNum = editingBillId || document.getElementById('next-bill-num').textContent;
+  async function editBill(id) {
+    try {
+      const bill = await api(`/bills?id=${id}`);
+      editingBillId = id;
+      showPage('new-bill');
+      document.querySelector('.nav-btn[data-page="new-bill"]').classList.add('active');
+      await new Promise(r => setTimeout(r, 50));
 
-  const html = `
+      const firm = allFirms.find(f => f.id === bill.firm_id);
+      document.getElementById('bill-client-input').value = firm?.name || '';
+      document.getElementById('bill-firm-id').value = bill.firm_id;
+      document.getElementById('bill-date').value = bill.bill_date;
+      document.getElementById('bill-bilty').value = bill.bilty_no || '';
+      document.getElementById('bill-do').value = bill.do_no || '';
+      document.getElementById('bill-bilty-charges').value = bill.bilty_charges || 0;
+      document.getElementById('bill-pkg-charges').value = bill.packaging_charges || 0;
+      document.getElementById('next-bill-num').textContent = bill.id;
+
+      if (!bill.is_credit) {
+        document.querySelectorAll('#page-new-bill .tog-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('#page-new-bill .tog-btn:first-child').classList.add('active');
+        document.getElementById('bill-type').value = 'cash';
+      }
+
+      const tbody = document.getElementById('bill-items-body');
+      tbody.innerHTML = '';
+      (bill.bill_items || []).forEach(item => {
+        addBillRow();
+        const row = tbody.lastElementChild;
+        row.querySelector('.particular-input').value = item.product_name;
+        row.cells[2].querySelector('input').value = item.colour || '';
+        row.cells[3].querySelector('input').value = item.size || '';
+        row.querySelectorAll('input[type=number]')[0].value = item.quantity || 0;
+        row.querySelectorAll('input[type=number]')[1].value = item.price || 0;
+        row.cells[6].textContent = fmtNum(item.total);
+      });
+      addBillRow();
+      recalcTotal();
+      await loadPrevBalance(bill.firm_id);
+
+      buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => {
+        await loadPrevBalance(id);
+      });
+    } catch (e) { showBillError('Error loading bill: ' + e.message); }
+  }
+
+  async function deleteBill(id) {
+    if (!window.confirm('Delete this bill? This cannot be undone.')) return;
+    try {
+      await api(`/bills?id=${id}`, 'DELETE');
+      showToast({ title: 'Bill deleted', entries: [] });
+      await loadFirms();
+      if (currentLedgerFirmId) loadLedger();
+      else loadDashboard();
+    } catch (e) {
+      showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
+    }
+  }
+
+  // ─── PRINT ────────────────────────────────────────────────────────────────────
+  function previewPrint() {
+    const firmId = document.getElementById('bill-firm-id').value;
+    if (!firmId) { showBillError('Please select a client first.'); return; }
+    const firm = allFirms.find(f => f.id == firmId);
+    const billDate = document.getElementById('bill-date').value;
+    const biltyNo = document.getElementById('bill-bilty').value;
+    const doNo = document.getElementById('bill-do').value;
+    const billType = document.getElementById('bill-type').value;
+    const items = collectBillItems();
+    if (!items.length) { showBillError('Please add items before printing.'); return; }
+    const biltyCharges = parseInt(document.getElementById('bill-bilty-charges').value) || 0;
+    const pkgCharges = parseInt(document.getElementById('bill-pkg-charges').value) || 0;
+    const grand = items.reduce((s, i) => s + i.total, 0) + biltyCharges + pkgCharges;
+    const prevBalText = document.getElementById('prev-bal-val')?.textContent?.replace(/[₨,\s]/g, '') || '0';
+    const prevBal = parseFloat(prevBalText) || 0;
+    const newBal = prevBal + grand;
+    const billNum = editingBillId || document.getElementById('next-bill-num').textContent;
+
+    const html = `
     <div class="print-doc">
       <div class="print-header">
         <div class="print-logo">NEEDLE CRAFT</div>
@@ -766,109 +783,115 @@ function previewPrint() {
       <div class="print-footer">Thank you for your business &nbsp;·&nbsp; Needle Craft</div>
     </div>`;
 
-  document.getElementById('print-content').innerHTML = html;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-print').classList.add('active');
-}
-
-function hidePrint() { showPage('new-bill'); }
-
-// ─── PAYMENTS ─────────────────────────────────────────────────────────────────
-function initPaymentsForm() {
-  document.getElementById('pmt-date').value = today();
-  document.getElementById('pmt-amount').value = '';
-  document.getElementById('pmt-method').value = 'Cash';
-  document.getElementById('pmt-bank').value = '';
-  document.getElementById('pmt-ref').value = '';
-  document.getElementById('pmt-memo').value = '';
-  document.getElementById('bank-fields').style.display = 'none';
-  document.getElementById('pmt-client-input').value = '';
-  document.getElementById('pmt-firm-id').value = '';
-
-  const errEl = document.getElementById('pmt-form-error');
-  if (errEl) errEl.style.display = 'none';
-
-  // Wire up client search for payments
-  buildSearchDropdown('pmt-client-input', 'pmt-client-dropdown', allFirms, 'pmt-firm-id', null);
-}
-
-function toggleBankFields() {
-  const method = document.getElementById('pmt-method').value;
-  document.getElementById('bank-fields').style.display =
-    (method === 'Cheque' || method === 'Bank Transfer') ? 'block' : 'none';
-}
-
-function showPmtError(message) {
-  let errEl = document.getElementById('pmt-form-error');
-  if (!errEl) {
-    errEl = document.createElement('div');
-    errEl.id = 'pmt-form-error';
-    errEl.className = 'inline-error';
-    document.querySelector('#page-payments .card').prepend(errEl);
+    document.getElementById('print-content').innerHTML = html;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-print').classList.add('active');
   }
-  errEl.textContent = message;
-  errEl.style.display = 'block';
-  errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  setTimeout(() => { errEl.style.display = 'none'; }, 5000);
-}
 
-async function savePayment() {
-  const firmId = parseInt(document.getElementById('pmt-firm-id').value);
-  if (!firmId) { showPmtError('Please select a client before saving.'); return; }
-  const amount = parseInt(document.getElementById('pmt-amount').value);
-  if (!amount || amount <= 0) { showPmtError('Please enter a valid amount greater than zero.'); return; }
-  const pmtDate = document.getElementById('pmt-date').value;
-  if (!pmtDate) { showPmtError('Please enter a date.'); return; }
+  function hidePrint() { showPage('new-bill'); }
 
-  const pmtData = {
-    firm_id: firmId,
-    payment_date: pmtDate,
-    amount,
-    method: document.getElementById('pmt-method').value,
-    bank_name: document.getElementById('pmt-bank').value,
-    cheque_number: document.getElementById('pmt-ref').value,
-    memo: document.getElementById('pmt-memo').value,
-  };
+  // ─── PAYMENTS ─────────────────────────────────────────────────────────────────
+  function initPaymentsForm() {
+    document.getElementById('pmt-date').value = today();
+    document.getElementById('pmt-amount').value = '';
+    document.getElementById('pmt-method').value = 'Cash';
+    document.getElementById('pmt-bank').value = '';
+    document.getElementById('pmt-ref').value = '';
+    document.getElementById('pmt-memo').value = '';
+    document.getElementById('bank-fields').style.display = 'none';
+    document.getElementById('pmt-client-input').value = '';
+    document.getElementById('pmt-firm-id').value = '';
 
-  try {
-    const result = await api('/payments', 'POST', pmtData);
-    const firm = allFirms.find(f => f.id === firmId);
-    const hasAnomaly = !!result.anomaly;
+    const errEl = document.getElementById('pmt-form-error');
+    if (errEl) errEl.style.display = 'none';
 
-    const entries = [];
-    (result.recentBills || []).forEach(b => entries.push({
-      date: fmtDate(b.bill_date), desc: `Bill # ${b.id}`,
-      amount: fmt(b.total_amount), highlight: false
-    }));
-    (result.recentPmts || []).slice(0, 2).forEach(p => entries.push({
-      date: fmtDate(p.payment_date),
-      desc: p.method + (p.bank_name ? ' — ' + p.bank_name : ''),
-      amount: fmt(p.amount), highlight: false
-    }));
+    // Wire up client search for payments
+    buildSearchDropdown('pmt-client-input', 'pmt-client-dropdown', allFirms, 'pmt-firm-id', null);
+  }
 
-    showToast({
-      title: hasAnomaly ? 'Payment saved — Overpayment detected' : 'Payment saved',
-      subtitle: `Recent entries — ${firm?.name || ''}`,
-      entries, hasAnomaly, firmId
-    });
+  function toggleBankFields() {
+    const method = document.getElementById('pmt-method').value;
+    document.getElementById('bank-fields').style.display =
+      (method === 'Cheque' || method === 'Bank Transfer') ? 'block' : 'none';
+  }
 
-    initPaymentsForm();
-    invalidatePage('clients');
-    await loadRecentPayments();
-    await loadFirms();
-  } catch (e) { showPmtError('Error saving payment: ' + e.message); }
-}
-
-async function loadRecentPayments() {
-  showLoading('recent-pmts-table', 'Loading payments...');
-  try {
-    const data = await api('/payments');
-    const wrap = document.getElementById('recent-pmts-table');
-    if (!data.length) {
-      wrap.innerHTML = '<p class="empty-state">No payments yet.</p>';
-      return;
+  function showPmtError(message) {
+    let errEl = document.getElementById('pmt-form-error');
+    if (!errEl) {
+      errEl = document.createElement('div');
+      errEl.id = 'pmt-form-error';
+      errEl.className = 'inline-error';
+      document.querySelector('#page-payments .card').prepend(errEl);
     }
-    wrap.innerHTML = `<table style="table-layout:auto">
+    errEl.textContent = message;
+    errEl.style.display = 'block';
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => { errEl.style.display = 'none'; }, 5000);
+  }
+
+  async function savePayment() {
+    const saveBtn = document.querySelector('#page-payments .btn-primary');
+    setButtonLoading(saveBtn, true);
+    const firmId = parseInt(document.getElementById('pmt-firm-id').value);
+    if (!firmId) { showPmtError('Please select a client before saving.'); return; }
+    const amount = parseInt(document.getElementById('pmt-amount').value);
+    if (!amount || amount <= 0) { showPmtError('Please enter a valid amount greater than zero.'); return; }
+    const pmtDate = document.getElementById('pmt-date').value;
+    if (!pmtDate) { showPmtError('Please enter a date.'); return; }
+
+    const pmtData = {
+      firm_id: firmId,
+      payment_date: pmtDate,
+      amount,
+      method: document.getElementById('pmt-method').value,
+      bank_name: document.getElementById('pmt-bank').value,
+      cheque_number: document.getElementById('pmt-ref').value,
+      memo: document.getElementById('pmt-memo').value,
+    };
+
+    try {
+      const result = await api('/payments', 'POST', pmtData);
+      const firm = allFirms.find(f => f.id === firmId);
+      const hasAnomaly = !!result.anomaly;
+
+      const entries = [];
+      (result.recentBills || []).forEach(b => entries.push({
+        date: fmtDate(b.bill_date), desc: `Bill # ${b.id}`,
+        amount: fmt(b.total_amount), highlight: false
+      }));
+      (result.recentPmts || []).slice(0, 2).forEach(p => entries.push({
+        date: fmtDate(p.payment_date),
+        desc: p.method + (p.bank_name ? ' — ' + p.bank_name : ''),
+        amount: fmt(p.amount), highlight: false
+      }));
+
+      showToast({
+        title: hasAnomaly ? 'Payment saved — Overpayment detected' : 'Payment saved',
+        subtitle: `Recent entries — ${firm?.name || ''}`,
+        entries, hasAnomaly, firmId
+      });
+
+      setButtonLoading(saveBtn, false);
+      initPaymentsForm();
+      invalidatePage('clients');
+      await loadRecentPayments();
+      await loadFirms();
+    } catch (e) {
+      setButtonLoading(saveBtn, false);
+      showPmtError('Error saving payment: ' + e.message);
+    }
+  }
+
+  async function loadRecentPayments() {
+    showLoading('recent-pmts-table', 'Loading payments...');
+    try {
+      const data = await api('/payments');
+      const wrap = document.getElementById('recent-pmts-table');
+      if (!data.length) {
+        wrap.innerHTML = '<p class="empty-state">No payments yet.</p>';
+        return;
+      }
+      wrap.innerHTML = `<table style="table-layout:auto">
       <thead><tr><th>Date</th><th>Client</th><th>Method</th><th style="text-align:right">Amount</th><th style="width:70px"></th></tr></thead>
       <tbody>${data.map(p => `
         <tr>
@@ -882,28 +905,28 @@ async function loadRecentPayments() {
           </div></td>
         </tr>`).join('')}
       </tbody></table>`;
-  } catch (e) { showError('recent-pmts-table', 'Failed to load payments.'); }
-}
-
-async function deletePayment(id) {
-  if (!window.confirm('Delete this payment? This cannot be undone.')) return;
-  try {
-    await api(`/payments?id=${id}`, 'DELETE');
-    showToast({ title: 'Payment deleted', entries: [] });
-    await loadRecentPayments();
-    invalidatePage('clients');
-    await loadFirms();
-  } catch (e) {
-    showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
+    } catch (e) { showError('recent-pmts-table', 'Failed to load payments.'); }
   }
-}
 
-async function editPaymentModal(id) {
-  try {
-    const data = await api('/payments');
-    const p = data.find(x => x.id === id);
-    if (!p) return;
-    showModal(`
+  async function deletePayment(id) {
+    if (!window.confirm('Delete this payment? This cannot be undone.')) return;
+    try {
+      await api(`/payments?id=${id}`, 'DELETE');
+      showToast({ title: 'Payment deleted', entries: [] });
+      await loadRecentPayments();
+      invalidatePage('clients');
+      await loadFirms();
+    } catch (e) {
+      showToast({ title: 'Error: ' + e.message, entries: [], hasAnomaly: true });
+    }
+  }
+
+  async function editPaymentModal(id) {
+    try {
+      const data = await api('/payments');
+      const p = data.find(x => x.id === id);
+      if (!p) return;
+      showModal(`
       <div class="modal-title">Edit payment</div>
       <div class="fg"><label>Date</label><input type="date" id="ep-date" value="${p.payment_date}"></div>
       <div class="fg"><label>Amount (₨)</label><input type="number" id="ep-amount" value="${p.amount}"></div>
@@ -922,43 +945,43 @@ async function editPaymentModal(id) {
         <button class="btn-primary" onclick="saveEditedPayment(${id})"><i class="ti ti-device-floppy"></i> Save</button>
         <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
       </div>`);
-  } catch (e) { console.error(e); }
-}
-
-async function saveEditedPayment(id) {
-  const body = {
-    payment_date: document.getElementById('ep-date').value,
-    amount: parseInt(document.getElementById('ep-amount').value),
-    method: document.getElementById('ep-method').value,
-    bank_name: document.getElementById('ep-bank').value,
-    cheque_number: document.getElementById('ep-ref').value,
-    memo: document.getElementById('ep-memo').value,
-  };
-  try {
-    await api(`/payments?id=${id}`, 'PUT', body);
-    closeModalDirect();
-    showToast({ title: 'Payment updated', entries: [] });
-    await loadRecentPayments();
-    await loadFirms();
-  } catch (e) { console.error(e); }
-}
-
-// ─── CLIENTS ──────────────────────────────────────────────────────────────────
-async function loadClients() {
-  showLoading('clients-table', 'Loading clients...');
-  try {
-    allFirms = await api('/firms');
-    renderClientsTable(allFirms);
-  } catch (e) { showError('clients-table', 'Failed to load clients.'); }
-}
-
-function renderClientsTable(firms) {
-  const wrap = document.getElementById('clients-table');
-  if (!firms.length) {
-    wrap.innerHTML = '<p class="empty-state">No clients found.</p>';
-    return;
+    } catch (e) { console.error(e); }
   }
-  wrap.innerHTML = `
+
+  async function saveEditedPayment(id) {
+    const body = {
+      payment_date: document.getElementById('ep-date').value,
+      amount: parseInt(document.getElementById('ep-amount').value),
+      method: document.getElementById('ep-method').value,
+      bank_name: document.getElementById('ep-bank').value,
+      cheque_number: document.getElementById('ep-ref').value,
+      memo: document.getElementById('ep-memo').value,
+    };
+    try {
+      await api(`/payments?id=${id}`, 'PUT', body);
+      closeModalDirect();
+      showToast({ title: 'Payment updated', entries: [] });
+      await loadRecentPayments();
+      await loadFirms();
+    } catch (e) { console.error(e); }
+  }
+
+  // ─── CLIENTS ──────────────────────────────────────────────────────────────────
+  async function loadClients() {
+    showLoading('clients-table', 'Loading clients...');
+    try {
+      allFirms = await api('/firms');
+      renderClientsTable(allFirms);
+    } catch (e) { showError('clients-table', 'Failed to load clients.'); }
+  }
+
+  function renderClientsTable(firms) {
+    const wrap = document.getElementById('clients-table');
+    if (!firms.length) {
+      wrap.innerHTML = '<p class="empty-state">No clients found.</p>';
+      return;
+    }
+    wrap.innerHTML = `
     <div class="scroll-table-clients">
       <table>
         <thead><tr><th style="width:36px">#</th><th>Name</th><th style="text-align:right;width:120px">Balance</th><th style="width:80px"></th></tr></thead>
@@ -975,16 +998,16 @@ function renderClientsTable(firms) {
         </tbody>
       </table>
     </div>`;
-}
+  }
 
-function filterClients() {
-  const q = document.getElementById('client-search').value.toLowerCase();
-  const filtered = allFirms.filter(f => f.name.toLowerCase().includes(q));
-  renderClientsTable(filtered);
-}
+  function filterClients() {
+    const q = document.getElementById('client-search').value.toLowerCase();
+    const filtered = allFirms.filter(f => f.name.toLowerCase().includes(q));
+    renderClientsTable(filtered);
+  }
 
-function showAddClientModal() {
-  showModal(`
+  function showAddClientModal() {
+    showModal(`
     <div class="modal-title">Add new client</div>
     <div class="fg"><label>Client / firm name</label>
       <input type="text" id="new-client-name" placeholder="e.g. Garrison Army Store Quetta" autofocus>
@@ -994,136 +1017,136 @@ function showAddClientModal() {
       <button class="btn-primary" onclick="saveNewClient()"><i class="ti ti-check"></i> Save client</button>
       <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
     </div>`);
-}
-
-async function saveNewClient() {
-  const name = document.getElementById('new-client-name').value.trim();
-  if (!name) {
-    const errEl = document.getElementById('add-client-error');
-    errEl.textContent = 'Please enter a client name.';
-    errEl.style.display = 'block';
-    return;
   }
-  try {
-    const firm = await api('/firms', 'POST', { name });
-    closeModalDirect();
-    showToast({ title: `Client "${firm.name}" added`, entries: [] });
-    await loadFirms();
-    await loadClients();
-    invalidatePage('clients');
-  } catch (e) {
-    const errEl = document.getElementById('add-client-error');
-    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+
+  async function saveNewClient() {
+    const name = document.getElementById('new-client-name').value.trim();
+    if (!name) {
+      const errEl = document.getElementById('add-client-error');
+      errEl.textContent = 'Please enter a client name.';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      const firm = await api('/firms', 'POST', { name });
+      closeModalDirect();
+      showToast({ title: `Client "${firm.name}" added`, entries: [] });
+      await loadFirms();
+      await loadClients();
+      invalidatePage('clients');
+    } catch (e) {
+      const errEl = document.getElementById('add-client-error');
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    }
   }
-}
 
-async function deleteClient(id) {
-  if (!window.confirm('Delete this client?')) return;
-  try {
-    await api(`/firms?id=${id}`, 'DELETE');
-    showToast({ title: 'Client deleted', entries: [] });
-    await loadFirms();
-    invalidatePage('clients');
-    await loadClients();
-  } catch (e) {
-    showToast({ title: e.message, entries: [], hasAnomaly: true });
+  async function deleteClient(id) {
+    if (!window.confirm('Delete this client?')) return;
+    try {
+      await api(`/firms?id=${id}`, 'DELETE');
+      showToast({ title: 'Client deleted', entries: [] });
+      await loadFirms();
+      invalidatePage('clients');
+      await loadClients();
+    } catch (e) {
+      showToast({ title: e.message, entries: [], hasAnomaly: true });
+    }
   }
-}
 
-// ─── LEDGER ───────────────────────────────────────────────────────────────────
-async function openLedger(firmId) {
-  currentLedgerFirmId = firmId;
-  const firm = allFirms.find(f => f.id == firmId);
-  document.getElementById('ledger-firm-name').textContent = firm?.name || 'Ledger';
-  // Default: from 2024-01-01, no end date
-  document.getElementById('ledger-from').value = '2024-01-01';
-  document.getElementById('ledger-to').value = '';
-  showPage('ledger');
-  await loadLedger();
-}
+  // ─── LEDGER ───────────────────────────────────────────────────────────────────
+  async function openLedger(firmId) {
+    currentLedgerFirmId = firmId;
+    const firm = allFirms.find(f => f.id == firmId);
+    document.getElementById('ledger-firm-name').textContent = firm?.name || 'Ledger';
+    // Default: from 2024-01-01, no end date
+    document.getElementById('ledger-from').value = '2024-01-01';
+    document.getElementById('ledger-to').value = '';
+    showPage('ledger');
+    await loadLedger();
+  }
 
-// async function loadLedger() {
-//   if (!currentLedgerFirmId) return;
-//   showLoading('ledger-table', 'Loading ledger...');
-//   showLoading('ledger-metrics', '');
+  // async function loadLedger() {
+  //   if (!currentLedgerFirmId) return;
+  //   showLoading('ledger-table', 'Loading ledger...');
+  //   showLoading('ledger-metrics', '');
 
-//   const from = document.getElementById('ledger-from').value;
-//   const to = document.getElementById('ledger-to').value;
-//   let url = `/ledger?firm_id=${currentLedgerFirmId}`;
-//   if (from) url += `&from=${from}`;
-//   if (to) url += `&to=${to}`;
+  //   const from = document.getElementById('ledger-from').value;
+  //   const to = document.getElementById('ledger-to').value;
+  //   let url = `/ledger?firm_id=${currentLedgerFirmId}`;
+  //   if (from) url += `&from=${from}`;
+  //   if (to) url += `&to=${to}`;
 
-//   try {
-//     const data = await api(url);
+  //   try {
+  //     const data = await api(url);
 
-//     document.getElementById('ledger-metrics').innerHTML = `
-//       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
-//       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
-//       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
+  //     document.getElementById('ledger-metrics').innerHTML = `
+  //       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
+  //       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
+  //       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
 
-//     if (!data.entries.length) {
-//       document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
-//       return;
-//     }
+  //     if (!data.entries.length) {
+  //       document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
+  //       return;
+  //     }
 
-//     document.getElementById('ledger-table').innerHTML = `
-//       <table style="table-layout:auto">
-//         <thead><tr>
-//           <th style="width:95px">Date</th>
-//           <th>Description</th>
-//           <th style="text-align:right;width:95px">Credit</th>
-//           <th style="text-align:right;width:95px">Debit</th>
-//           <th style="text-align:right;width:95px">Balance</th>
-//           <th style="width:65px"></th>
-//         </tr></thead>
-//         <tbody>${data.entries.map(e => `
-//           <tr>
-//             <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
-//             <td>${e.description}</td>
-//             <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
-//             <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
-//             <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
-//             <td>${e.type === 'opening' ? '' : `
-//               <div class="action-btns">
-//                 ${e.type === 'bill'
-//           ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>
-//                      <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete bill"><i class="ti ti-trash"></i></button>`
-//           : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>
-//                      <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete payment"><i class="ti ti-trash"></i></button>`}
-//               </div>`}
-//             </td>
-//           </tr>`).join('')}
-//         </tbody>
-//       </table>`;
-//   } catch (e) { showError('ledger-table', 'Failed to load ledger.'); }
-// }
+  //     document.getElementById('ledger-table').innerHTML = `
+  //       <table style="table-layout:auto">
+  //         <thead><tr>
+  //           <th style="width:95px">Date</th>
+  //           <th>Description</th>
+  //           <th style="text-align:right;width:95px">Credit</th>
+  //           <th style="text-align:right;width:95px">Debit</th>
+  //           <th style="text-align:right;width:95px">Balance</th>
+  //           <th style="width:65px"></th>
+  //         </tr></thead>
+  //         <tbody>${data.entries.map(e => `
+  //           <tr>
+  //             <td style="color:#888;font-size:12px">${fmtDate(e.date)}</td>
+  //             <td>${e.description}</td>
+  //             <td style="text-align:right">${e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
+  //             <td style="text-align:right">${e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
+  //             <td style="text-align:right" class="${e.balance > 0 ? 'red' : 'green'}">${fmtNum(e.balance)}</td>
+  //             <td>${e.type === 'opening' ? '' : `
+  //               <div class="action-btns">
+  //                 ${e.type === 'bill'
+  //           ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit bill"><i class="ti ti-edit"></i></button>
+  //                      <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete bill"><i class="ti ti-trash"></i></button>`
+  //           : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit payment"><i class="ti ti-edit"></i></button>
+  //                      <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete payment"><i class="ti ti-trash"></i></button>`}
+  //               </div>`}
+  //             </td>
+  //           </tr>`).join('')}
+  //         </tbody>
+  //       </table>`;
+  //   } catch (e) { showError('ledger-table', 'Failed to load ledger.'); }
+  // }
 
-async function loadLedger() {
-  if (!currentLedgerFirmId) return;
-  showLoading('ledger-table', 'Loading ledger...');
-  showLoading('ledger-metrics', '');
+  async function loadLedger() {
+    if (!currentLedgerFirmId) return;
+    showLoading('ledger-table', 'Loading ledger...');
+    showLoading('ledger-metrics', '');
 
-  const from = document.getElementById('ledger-from').value;
-  const to = document.getElementById('ledger-to').value;
+    const from = document.getElementById('ledger-from').value;
+    const to = document.getElementById('ledger-to').value;
 
-  let url = `/ledger?firm_id=${currentLedgerFirmId}`;
-  if (from) url += `&from=${from}`;
-  if (to) url += `&to=${to}`;
+    let url = `/ledger?firm_id=${currentLedgerFirmId}`;
+    if (from) url += `&from=${from}`;
+    if (to) url += `&to=${to}`;
 
-  try {
-    const data = await api(url);
+    try {
+      const data = await api(url);
 
-    document.getElementById('ledger-metrics').innerHTML = `
+      document.getElementById('ledger-metrics').innerHTML = `
       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
 
-    if (!data.entries.length) {
-      document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
-      return;
-    }
+      if (!data.entries.length) {
+        document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
+        return;
+      }
 
-    document.getElementById('ledger-table').innerHTML = `
+      document.getElementById('ledger-table').innerHTML = `
       <table style="table-layout:auto;width:100%">
         <thead>
           <tr>
@@ -1147,40 +1170,40 @@ async function loadLedger() {
       ${e.type === 'opening' ? '' : e.isActive ? `
         <div class="action-btns">
           ${e.type === 'bill'
-          ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
+            ? `<button class="icon-btn" onclick="editBill(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
                <button class="icon-btn del" onclick="deleteBill(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`
-          : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
+            : `<button class="icon-btn" onclick="editPaymentModal(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
                <button class="icon-btn del" onclick="deletePayment(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>`}
         </div>` : '<span style="font-size:10px;color:#bbb">archive</span>'}
     </td>
   </tr>`).join('')}
         </tbody>
       </table>`;
-  } catch (e) {
-    showError('ledger-table', 'Failed to load ledger: ' + e.message);
+    } catch (e) {
+      showError('ledger-table', 'Failed to load ledger: ' + e.message);
+    }
   }
-}
 
-function clearLedgerFilter() {
-  document.getElementById('ledger-from').value = '2024-01-01';
-  document.getElementById('ledger-to').value = '';
-  loadLedger();
-}
-
-function printLedger() { window.print(); }
-function exportLedgerPDF() {
-  alert('To export as PDF: use the Print button and select "Save as PDF" as your printer.');
-}
-
-// ─── PRODUCTS ─────────────────────────────────────────────────────────────────
-function renderProductsTable(products) {
-  const wrap = document.getElementById('products-table');
-  if (!wrap) return;
-  if (!products.length) {
-    wrap.innerHTML = '<p class="empty-state">No products yet.</p>';
-    return;
+  function clearLedgerFilter() {
+    document.getElementById('ledger-from').value = '2024-01-01';
+    document.getElementById('ledger-to').value = '';
+    loadLedger();
   }
-  wrap.innerHTML = `<table style="table-layout:auto">
+
+  function printLedger() { window.print(); }
+  function exportLedgerPDF() {
+    alert('To export as PDF: use the Print button and select "Save as PDF" as your printer.');
+  }
+
+  // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
+  function renderProductsTable(products) {
+    const wrap = document.getElementById('products-table');
+    if (!wrap) return;
+    if (!products.length) {
+      wrap.innerHTML = '<p class="empty-state">No products yet.</p>';
+      return;
+    }
+    wrap.innerHTML = `<table style="table-layout:auto">
     <thead><tr>
       <th>Code</th><th>Product name</th>
       <th style="text-align:right">Std. price</th>
@@ -1203,10 +1226,10 @@ function renderProductsTable(products) {
         </div></td>
       </tr>`).join('')}
     </tbody></table>`;
-}
+  }
 
-function showAddProductModal() {
-  showModal(`
+  function showAddProductModal() {
+    showModal(`
     <div class="modal-title">Add new product</div>
     <div class="form-2">
       <div class="fg"><label>Code</label><input type="text" id="np-code" placeholder="e.g. SV" style="text-transform:uppercase"></div>
@@ -1219,36 +1242,36 @@ function showAddProductModal() {
       <button class="btn-primary" onclick="saveNewProduct()"><i class="ti ti-check"></i> Save product</button>
       <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
     </div>`);
-}
-
-async function saveNewProduct() {
-  const code = document.getElementById('np-code').value.trim().toUpperCase();
-  const name = document.getElementById('np-name').value.trim();
-  const price = parseInt(document.getElementById('np-price').value) || 0;
-  const cost = parseInt(document.getElementById('np-cost').value) || 0;
-  if (!code || !name) {
-    const errEl = document.getElementById('add-product-error');
-    errEl.textContent = 'Please enter both code and name.';
-    errEl.style.display = 'block';
-    return;
   }
-  try {
-    await api('/products', 'POST', { code, name, standard_price: price, cost_price: cost });
-    closeModalDirect();
-    showToast({ title: `Product "${name}" added`, entries: [] });
-    invalidatePage('products');
-    allProducts = await api('/products');
-    renderProductsTable(allProducts);
-  } catch (e) {
-    const errEl = document.getElementById('add-product-error');
-    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
-  }
-}
 
-async function editProductModal(id) {
-  const p = allProducts.find(x => x.id === id);
-  if (!p) return;
-  showModal(`
+  async function saveNewProduct() {
+    const code = document.getElementById('np-code').value.trim().toUpperCase();
+    const name = document.getElementById('np-name').value.trim();
+    const price = parseInt(document.getElementById('np-price').value) || 0;
+    const cost = parseInt(document.getElementById('np-cost').value) || 0;
+    if (!code || !name) {
+      const errEl = document.getElementById('add-product-error');
+      errEl.textContent = 'Please enter both code and name.';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      await api('/products', 'POST', { code, name, standard_price: price, cost_price: cost });
+      closeModalDirect();
+      showToast({ title: `Product "${name}" added`, entries: [] });
+      invalidatePage('products');
+      allProducts = await api('/products');
+      renderProductsTable(allProducts);
+    } catch (e) {
+      const errEl = document.getElementById('add-product-error');
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    }
+  }
+
+  async function editProductModal(id) {
+    const p = allProducts.find(x => x.id === id);
+    if (!p) return;
+    showModal(`
     <div class="modal-title">Edit product</div>
     <div class="form-2">
       <div class="fg"><label>Code</label><input type="text" id="ep2-code" value="${p.code}" style="text-transform:uppercase"></div>
@@ -1260,47 +1283,47 @@ async function editProductModal(id) {
       <button class="btn-primary" onclick="saveEditedProduct(${id})"><i class="ti ti-device-floppy"></i> Save</button>
       <button class="btn-sec" onclick="closeModalDirect()">Cancel</button>
     </div>`);
-}
-
-async function saveEditedProduct(id) {
-  const body = {
-    code: document.getElementById('ep2-code').value.trim().toUpperCase(),
-    name: document.getElementById('ep2-name').value.trim(),
-    standard_price: parseInt(document.getElementById('ep2-price').value) || 0,
-    cost_price: parseInt(document.getElementById('ep2-cost').value) || 0,
-  };
-  try {
-    await api(`/products?id=${id}`, 'PUT', body);
-    closeModalDirect();
-    showToast({ title: 'Product updated', entries: [] });
-    allProducts = await api('/products');
-    renderProductsTable(allProducts);
-  } catch (e) { console.error(e); }
-}
-
-async function deleteProduct(id) {
-  if (!window.confirm('Delete this product?')) return;
-  try {
-    await api(`/products?id=${id}`, 'DELETE');
-    showToast({ title: 'Product deleted', entries: [] });
-    invalidatePage('products');
-    invalidatePage('products');
-    allProducts = await api('/products');
-    renderProductsTable(allProducts);
-  } catch (e) {
-    showToast({ title: e.message, entries: [], hasAnomaly: true });
   }
-}
 
-// ─── REPORTS ──────────────────────────────────────────────────────────────────
-function showOutstanding() { showOutstandingFiltered(0, 9999); }
+  async function saveEditedProduct(id) {
+    const body = {
+      code: document.getElementById('ep2-code').value.trim().toUpperCase(),
+      name: document.getElementById('ep2-name').value.trim(),
+      standard_price: parseInt(document.getElementById('ep2-price').value) || 0,
+      cost_price: parseInt(document.getElementById('ep2-cost').value) || 0,
+    };
+    try {
+      await api(`/products?id=${id}`, 'PUT', body);
+      closeModalDirect();
+      showToast({ title: 'Product updated', entries: [] });
+      allProducts = await api('/products');
+      renderProductsTable(allProducts);
+    } catch (e) { console.error(e); }
+  }
 
-function showOutstandingFiltered(minDays, maxDays) {
-  const filtered = allFirms
-    .filter(f => f.balance && f.balance > 0)
-    .sort((a, b) => b.balance - a.balance);
+  async function deleteProduct(id) {
+    if (!window.confirm('Delete this product?')) return;
+    try {
+      await api(`/products?id=${id}`, 'DELETE');
+      showToast({ title: 'Product deleted', entries: [] });
+      invalidatePage('products');
+      invalidatePage('products');
+      allProducts = await api('/products');
+      renderProductsTable(allProducts);
+    } catch (e) {
+      showToast({ title: e.message, entries: [], hasAnomaly: true });
+    }
+  }
 
-  showModal(`
+  // ─── REPORTS ──────────────────────────────────────────────────────────────────
+  function showOutstanding() { showOutstandingFiltered(0, 9999); }
+
+  function showOutstandingFiltered(minDays, maxDays) {
+    const filtered = allFirms
+      .filter(f => f.balance && f.balance > 0)
+      .sort((a, b) => b.balance - a.balance);
+
+    showModal(`
     <div class="modal-title">Outstanding balances</div>
     <table style="table-layout:auto;width:100%">
       <thead><tr><th>#</th><th>Client</th><th style="text-align:right">Balance</th></tr></thead>
@@ -1323,10 +1346,10 @@ function showOutstandingFiltered(minDays, maxDays) {
       <button class="btn-primary" onclick="window.print()"><i class="ti ti-printer"></i> Print</button>
       <button class="btn-sec" onclick="closeModalDirect()">Close</button>
     </div>`);
-}
+  }
 
-async function showDailySummary() {
-  showModal(`
+  async function showDailySummary() {
+    showModal(`
     <div class="modal-title">Search bills</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button class="tog-btn active" id="search-mode-date" onclick="setSearchMode('date')">Date range</button>
@@ -1347,48 +1370,48 @@ async function showDailySummary() {
     </div>
     <button class="btn-primary" onclick="loadBillSearch()"><i class="ti ti-search"></i> Search</button>
     <div id="search-result" style="margin-top:1rem"></div>`);
-}
+  }
 
-function setSearchMode(mode) {
-  ['date', 'bill', 'do'].forEach(m => {
-    document.getElementById(`search-mode-${m}-fields`).style.display = m === mode ? 'block' : 'none';
-    document.getElementById(`search-mode-${m}`).classList.toggle('active', m === mode);
-  });
-}
+  function setSearchMode(mode) {
+    ['date', 'bill', 'do'].forEach(m => {
+      document.getElementById(`search-mode-${m}-fields`).style.display = m === mode ? 'block' : 'none';
+      document.getElementById(`search-mode-${m}`).classList.toggle('active', m === mode);
+    });
+  }
 
-async function loadBillSearch() {
-  showLoading('search-result', 'Searching...');
-  try {
-    const activeMode = ['date', 'bill', 'do'].find(m =>
-      document.getElementById(`search-mode-${m}`).classList.contains('active')
-    );
+  async function loadBillSearch() {
+    showLoading('search-result', 'Searching...');
+    try {
+      const activeMode = ['date', 'bill', 'do'].find(m =>
+        document.getElementById(`search-mode-${m}`).classList.contains('active')
+      );
 
-    let url = '/bills?search=1';
-    if (activeMode === 'date') {
-      const from = document.getElementById('sr-from').value;
-      const to = document.getElementById('sr-to').value;
-      if (!from && !to) {
-        document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter at least one date.</p>';
-        return;
+      let url = '/bills?search=1';
+      if (activeMode === 'date') {
+        const from = document.getElementById('sr-from').value;
+        const to = document.getElementById('sr-to').value;
+        if (!from && !to) {
+          document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter at least one date.</p>';
+          return;
+        }
+        if (from) url += `&from=${from}`;
+        if (to) url += `&to=${to}`;
+      } else if (activeMode === 'bill') {
+        const billNo = document.getElementById('sr-bill').value.trim();
+        if (!billNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a bill number.</p>'; return; }
+        url += `&bill_no=${encodeURIComponent(billNo)}`;
+      } else if (activeMode === 'do') {
+        const doNo = document.getElementById('sr-do').value.trim();
+        if (!doNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a D/O number.</p>'; return; }
+        url += `&do_no=${encodeURIComponent(doNo)}`;
       }
-      if (from) url += `&from=${from}`;
-      if (to) url += `&to=${to}`;
-    } else if (activeMode === 'bill') {
-      const billNo = document.getElementById('sr-bill').value.trim();
-      if (!billNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a bill number.</p>'; return; }
-      url += `&bill_no=${encodeURIComponent(billNo)}`;
-    } else if (activeMode === 'do') {
-      const doNo = document.getElementById('sr-do').value.trim();
-      if (!doNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a D/O number.</p>'; return; }
-      url += `&do_no=${encodeURIComponent(doNo)}`;
-    }
 
-    const data = await api(url);
-    const total = data.reduce((s, b) => s + b.total_amount, 0);
+      const data = await api(url);
+      const total = data.reduce((s, b) => s + b.total_amount, 0);
 
-    document.getElementById('search-result').innerHTML = data.length === 0
-      ? '<p class="empty-state">No bills found.</p>'
-      : `<div style="font-size:12px;color:#888;margin-bottom:6px">${data.length} bill${data.length !== 1 ? 's' : ''} found</div>
+      document.getElementById('search-result').innerHTML = data.length === 0
+        ? '<p class="empty-state">No bills found.</p>'
+        : `<div style="font-size:12px;color:#888;margin-bottom:6px">${data.length} bill${data.length !== 1 ? 's' : ''} found</div>
          <table style="table-layout:auto;width:100%">
            <thead><tr><th>Bill #</th><th>Client</th><th>Date</th><th>D/O #</th><th style="text-align:right">Amount</th><th></th></tr></thead>
            <tbody>${data.map(b => `
@@ -1411,33 +1434,33 @@ async function loadBillSearch() {
              </tr>
            </tfoot>
          </table>`;
-  } catch (e) {
-    showError('search-result', 'Search failed: ' + e.message);
+    } catch (e) {
+      showError('search-result', 'Search failed: ' + e.message);
+    }
   }
-}
 
-async function showReprintBill() {
-  showModal(`
+  async function showReprintBill() {
+    showModal(`
     <div class="modal-title">Reprint bill</div>
     <div class="fg">
       <label>Search by Bill # or client name</label>
       <input type="text" id="reprint-q" placeholder="e.g. 13472 or Malik Arshad" oninput="searchReprintBills()">
     </div>
     <div id="reprint-results"></div>`);
-}
+  }
 
-async function searchReprintBills() {
-  const q = document.getElementById('reprint-q').value.trim().toLowerCase();
-  if (!q) return;
-  showLoading('reprint-results', 'Searching...');
-  try {
-    const data = await api('/bills');
-    const filtered = data
-      .filter(b => String(b.id).includes(q) || b.firms?.name?.toLowerCase().includes(q))
-      .slice(0, 10);
-    document.getElementById('reprint-results').innerHTML = filtered.length === 0
-      ? '<p class="empty-state">No bills found.</p>'
-      : `<table style="table-layout:auto;width:100%;margin-top:8px">
+  async function searchReprintBills() {
+    const q = document.getElementById('reprint-q').value.trim().toLowerCase();
+    if (!q) return;
+    showLoading('reprint-results', 'Searching...');
+    try {
+      const data = await api('/bills');
+      const filtered = data
+        .filter(b => String(b.id).includes(q) || b.firms?.name?.toLowerCase().includes(q))
+        .slice(0, 10);
+      document.getElementById('reprint-results').innerHTML = filtered.length === 0
+        ? '<p class="empty-state">No bills found.</p>'
+        : `<table style="table-layout:auto;width:100%;margin-top:8px">
           <thead><tr><th>Bill #</th><th>Client</th><th>Date</th><th style="text-align:right">Amount</th><th></th></tr></thead>
           <tbody>${filtered.map(b => `
             <tr>
@@ -1449,17 +1472,17 @@ async function searchReprintBills() {
               </button></td>
             </tr>`).join('')}
           </tbody></table>`;
-  } catch (e) { showError('reprint-results', 'Search failed.'); }
-}
+    } catch (e) { showError('reprint-results', 'Search failed.'); }
+  }
 
-async function reprintBill(id) {
-  try {
-    const bill = await api(`/bills?id=${id}`);
-    const firm = allFirms.find(f => f.id === bill.firm_id);
-    const items = bill.bill_items || [];
-    const grand = bill.total_amount;
+  async function reprintBill(id) {
+    try {
+      const bill = await api(`/bills?id=${id}`);
+      const firm = allFirms.find(f => f.id === bill.firm_id);
+      const items = bill.bill_items || [];
+      const grand = bill.total_amount;
 
-    const html = `
+      const html = `
       <div class="print-doc">
         <div class="print-header">
           <div class="print-logo">NEEDLE CRAFT</div>
@@ -1497,27 +1520,27 @@ async function reprintBill(id) {
         <div class="print-footer">Thank you for your business &nbsp;·&nbsp; Needle Craft</div>
       </div>`;
 
-    closeModalDirect();
-    document.getElementById('print-content').innerHTML = html;
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById('page-print').classList.add('active');
-  } catch (e) { console.error(e); }
-}
+      closeModalDirect();
+      document.getElementById('print-content').innerHTML = html;
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-print').classList.add('active');
+    } catch (e) { console.error(e); }
+  }
 
-// ─── BACKUP ───────────────────────────────────────────────────────────────────
-async function backupData() {
-  try {
-    const [firms, bills, payments, products] = await Promise.all([
-      api('/firms'), api('/bills'), api('/payments'), api('/products')
-    ]);
-    const backup = { exported_at: new Date().toISOString(), firms, bills, payments, products };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `needlecraft_backup_${today()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast({ title: 'Backup downloaded', subtitle: `needlecraft_backup_${today()}.json`, entries: [] });
-  } catch (e) { console.error('Backup failed:', e); }
-}
+  // ─── BACKUP ───────────────────────────────────────────────────────────────────
+  async function backupData() {
+    try {
+      const [firms, bills, payments, products] = await Promise.all([
+        api('/firms'), api('/bills'), api('/payments'), api('/products')
+      ]);
+      const backup = { exported_at: new Date().toISOString(), firms, bills, payments, products };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `needlecraft_backup_${today()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast({ title: 'Backup downloaded', subtitle: `needlecraft_backup_${today()}.json`, entries: [] });
+    } catch (e) { console.error('Backup failed:', e); }
+  }
