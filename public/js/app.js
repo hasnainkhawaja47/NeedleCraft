@@ -1217,39 +1217,93 @@ function showOutstandingFiltered(minDays, maxDays) {
 
 async function showDailySummary() {
   showModal(`
-    <div class="modal-title">Daily summary</div>
-    <div class="fg"><label>Select date</label><input type="date" id="ds-date" value="${today()}"></div>
-    <button class="btn-primary" onclick="loadDailySummary()"><i class="ti ti-search"></i> Load</button>
-    <div id="ds-result" style="margin-top:1rem"></div>`);
+    <div class="modal-title">Search bills</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="tog-btn active" id="search-mode-date" onclick="setSearchMode('date')">Date range</button>
+      <button class="tog-btn" id="search-mode-bill" onclick="setSearchMode('bill')">Bill #</button>
+      <button class="tog-btn" id="search-mode-do" onclick="setSearchMode('do')">D/O #</button>
+    </div>
+    <div id="search-mode-date-fields">
+      <div class="form-2">
+        <div class="fg"><label>From date</label><input type="date" id="sr-from"></div>
+        <div class="fg"><label>To date</label><input type="date" id="sr-to"></div>
+      </div>
+    </div>
+    <div id="search-mode-bill-fields" style="display:none">
+      <div class="fg"><label>Bill number</label><input type="text" id="sr-bill" placeholder="e.g. 13472"></div>
+    </div>
+    <div id="search-mode-do-fields" style="display:none">
+      <div class="fg"><label>D/O number</label><input type="text" id="sr-do" placeholder="e.g. 436"></div>
+    </div>
+    <button class="btn-primary" onclick="loadBillSearch()"><i class="ti ti-search"></i> Search</button>
+    <div id="search-result" style="margin-top:1rem"></div>`);
 }
 
-async function loadDailySummary() {
-  const date = document.getElementById('ds-date').value;
-  showLoading('ds-result', 'Loading...');
+function setSearchMode(mode) {
+  ['date', 'bill', 'do'].forEach(m => {
+    document.getElementById(`search-mode-${m}-fields`).style.display = m === mode ? 'block' : 'none';
+    document.getElementById(`search-mode-${m}`).classList.toggle('active', m === mode);
+  });
+}
+
+async function loadBillSearch() {
+  showLoading('search-result', 'Searching...');
   try {
-    const data = await api(`/bills?today=1`);
-    const filtered = data.filter(b => b.bill_date === date);
-    const total = filtered.reduce((s, b) => s + b.total_amount, 0);
-    document.getElementById('ds-result').innerHTML = filtered.length === 0
-      ? '<p class="empty-state">No bills on this date.</p>'
-      : `<table style="table-layout:auto;width:100%">
-          <thead><tr><th>Bill #</th><th>Client</th><th>Type</th><th style="text-align:right">Amount</th></tr></thead>
-          <tbody>${filtered.map(b => `
-            <tr>
-              <td>${b.id}</td>
-              <td>${b.firms?.name || '—'}</td>
-              <td><span class="badge ${b.is_credit ? 'badge-credit' : 'badge-cash'}">${b.is_credit ? 'Credit' : 'Cash'}</span></td>
-              <td style="text-align:right">${fmt(b.total_amount)}</td>
-            </tr>`).join('')}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3" style="font-weight:500;padding-top:8px">Total</td>
-              <td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td>
-            </tr>
-          </tfoot>
-        </table>`;
-  } catch (e) { showError('ds-result', 'Failed to load.'); }
+    const activeMode = ['date', 'bill', 'do'].find(m =>
+      document.getElementById(`search-mode-${m}`).classList.contains('active')
+    );
+
+    let url = '/bills?search=1';
+    if (activeMode === 'date') {
+      const from = document.getElementById('sr-from').value;
+      const to = document.getElementById('sr-to').value;
+      if (!from && !to) {
+        document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter at least one date.</p>';
+        return;
+      }
+      if (from) url += `&from=${from}`;
+      if (to) url += `&to=${to}`;
+    } else if (activeMode === 'bill') {
+      const billNo = document.getElementById('sr-bill').value.trim();
+      if (!billNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a bill number.</p>'; return; }
+      url += `&bill_no=${encodeURIComponent(billNo)}`;
+    } else if (activeMode === 'do') {
+      const doNo = document.getElementById('sr-do').value.trim();
+      if (!doNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a D/O number.</p>'; return; }
+      url += `&do_no=${encodeURIComponent(doNo)}`;
+    }
+
+    const data = await api(url);
+    const total = data.reduce((s, b) => s + b.total_amount, 0);
+
+    document.getElementById('search-result').innerHTML = data.length === 0
+      ? '<p class="empty-state">No bills found.</p>'
+      : `<div style="font-size:12px;color:#888;margin-bottom:6px">${data.length} bill${data.length !== 1 ? 's' : ''} found</div>
+         <table style="table-layout:auto;width:100%">
+           <thead><tr><th>Bill #</th><th>Client</th><th>Date</th><th>D/O #</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+           <tbody>${data.map(b => `
+             <tr>
+               <td>${b.id}</td>
+               <td style="white-space:normal">${b.firms?.name || '—'}</td>
+               <td style="white-space:nowrap">${fmtDate(b.bill_date)}</td>
+               <td>${b.do_no || '—'}</td>
+               <td style="text-align:right">${fmt(b.total_amount)}</td>
+               <td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="reprintBill(${b.id})">
+                 <i class="ti ti-printer"></i>
+               </button></td>
+             </tr>`).join('')}
+           </tbody>
+           <tfoot>
+             <tr>
+               <td colspan="4" style="font-weight:500;padding-top:8px">Total</td>
+               <td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td>
+               <td></td>
+             </tr>
+           </tfoot>
+         </table>`;
+  } catch (e) {
+    showError('search-result', 'Search failed: ' + e.message);
+  }
 }
 
 async function showReprintBill() {
