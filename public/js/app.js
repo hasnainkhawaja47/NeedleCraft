@@ -1544,3 +1544,4 @@ async function saveBill() {
       showToast({ title: 'Backup downloaded', subtitle: `needlecraft_backup_${today()}.json`, entries: [] });
     } catch (e) { console.error('Backup failed:', e); }
   }
+}
