@@ -979,14 +979,14 @@ tr:last-child td {
 }
 
 /* PRINT */
-.print-note {
+/* .print-note {
   font-size: 12px;
   color: #888;
   text-align: center;
   margin-bottom: 1rem
 }
 
-/* @media print {
+@media print {
 
   .sidebar,
   .no-print,
@@ -1106,7 +1106,31 @@ tr:last-child td {
   padding-top: 8px
 } */
 
+.print-note {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  margin-bottom: 1rem
+}
+
 @media print {
+
+  .sidebar,
+  .no-print,
+  #toast-container,
+  .modal-overlay {
+    display: none !important
+  }
+
+  .content {
+    margin-left: 0 !important;
+    padding: 0 !important
+  }
+
+  .page {
+    display: none !important
+  }
+
   #page-print {
     display: block !important
   }
@@ -1186,8 +1210,8 @@ tr:last-child td {
 }
 
 /* Column widths — adjust to taste */
-.print-table th:nth-child(1), .print-table td:nth-child(1) { width: 2%; }   /* # */
-.print-table th:nth-child(2), .print-table td:nth-child(2) { width: 33%; } /* Particular */
+.print-table th:nth-child(1), .print-table td:nth-child(1) { width: 5%; }   /* # */
+.print-table th:nth-child(2), .print-table td:nth-child(2) { width: 30%; } /* Particular */
 .print-table th:nth-child(3), .print-table td:nth-child(3) { width: 15%; } /* Colour */
 .print-table th:nth-child(4), .print-table td:nth-child(4) { width: 12%; } /* Size */
 .print-table th:nth-child(5), .print-table td:nth-child(5) { width: 10%; } /* Qty */
