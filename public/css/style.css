@@ -1186,8 +1186,8 @@ tr:last-child td {
 }
 
 /* Column widths — adjust to taste */
-.print-table th:nth-child(1), .print-table td:nth-child(1) { width: 5%; }   /* # */
-.print-table th:nth-child(2), .print-table td:nth-child(2) { width: 30%; } /* Particular */
+.print-table th:nth-child(1), .print-table td:nth-child(1) { width: 2%; }   /* # */
+.print-table th:nth-child(2), .print-table td:nth-child(2) { width: 33%; } /* Particular */
 .print-table th:nth-child(3), .print-table td:nth-child(3) { width: 15%; } /* Colour */
 .print-table th:nth-child(4), .print-table td:nth-child(4) { width: 12%; } /* Size */
 .print-table th:nth-child(5), .print-table td:nth-child(5) { width: 10%; } /* Qty */
