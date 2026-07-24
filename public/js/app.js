@@ -6,6 +6,30 @@ function checkAuth() {
   return true;
 }
 
+// ─── PROCESSING OVERLAY ───────────────────────────────────────────────────────
+function showProcessingOverlay(message = 'Saving...') {
+  let overlay = document.getElementById('processing-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'processing-overlay';
+    overlay.innerHTML = `
+      <div class="processing-box">
+        <div class="spinner"></div>
+        <span id="processing-msg"></span>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('processing-msg').textContent = message;
+  overlay.style.display = 'flex';
+  document.getElementById('app-root')?.classList.add('blurred');
+}
+
+function hideProcessingOverlay() {
+  const overlay = document.getElementById('processing-overlay');
+  if (overlay) overlay.style.display = 'none';
+  document.getElementById('app-root')?.classList.remove('blurred');
+}
+
 function showLoginScreen() {
   document.body.innerHTML = `
     <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e">
@@ -485,6 +509,65 @@ function showBillError(message) {
   setTimeout(() => { errEl.style.display = 'none'; }, 5000);
 }
 
+// async function saveBill() {
+//   const firmId = parseInt(document.getElementById('bill-firm-id').value);
+//   if (!firmId) { showBillError('Please select a client before saving.'); return; }
+//   const billDate = document.getElementById('bill-date').value;
+//   if (!billDate) { showBillError('Please enter a date.'); return; }
+//   const items = collectBillItems();
+//   if (items.length === 0) { showBillError('Please add at least one item with quantity and price.'); return; }
+
+//   const total = items.reduce((s, i) => s + i.total, 0)
+//     + (parseInt(document.getElementById('bill-bilty-charges').value) || 0)
+//     + (parseInt(document.getElementById('bill-pkg-charges').value) || 0);
+
+//   const billData = {
+//     firm_id: firmId,
+//     bill_date: billDate,
+//     bilty_no: document.getElementById('bill-bilty').value,
+//     do_no: document.getElementById('bill-do').value,
+//     bilty_charges: parseInt(document.getElementById('bill-bilty-charges').value) || 0,
+//     packaging_charges: parseInt(document.getElementById('bill-pkg-charges').value) || 0,
+//     total_amount: total,
+//     is_credit: document.getElementById('bill-type').value === 'credit',
+//     items
+//   };
+
+//   try {
+//     let result;
+//     if (editingBillId) {
+//       result = await api(`/bills?id=${editingBillId}`, 'PUT', billData);
+//       result.anomalies = [];
+//     } else {
+//       result = await api('/bills', 'POST', billData);
+//     }
+
+//     const firm = allFirms.find(f => f.id === firmId);
+//     const hasAnomaly = result.anomalies && result.anomalies.length > 0;
+
+//     const toastEntries = (result.recentBills || []).map(b => ({
+//       date: fmtDate(b.bill_date),
+//       desc: `Bill # ${b.id}`,
+//       amount: fmt(b.total_amount),
+//       highlight: hasAnomaly && b.total_amount === total && b.id !== result.bill?.id
+//     }));
+
+//     showToast({
+//       title: hasAnomaly
+//         ? `Bill saved — ${result.anomalies[0].type} detected`
+//         : (editingBillId ? 'Bill updated' : 'Bill saved'),
+//       subtitle: `Recent entries — ${firm?.name || ''}`,
+//       entries: toastEntries,
+//       hasAnomaly,
+//       firmId
+//     });
+
+//     editingBillId = null;
+//     initNewBillForm();
+//     await loadFirms();
+//   } catch (e) { showBillError('Error saving bill: ' + e.message); }
+// }
+
 async function saveBill() {
   const firmId = parseInt(document.getElementById('bill-firm-id').value);
   if (!firmId) { showBillError('Please select a client before saving.'); return; }
@@ -509,6 +592,7 @@ async function saveBill() {
     items
   };
 
+  showProcessingOverlay('Saving bill...');
   try {
     let result;
     if (editingBillId) {
@@ -541,7 +625,11 @@ async function saveBill() {
     editingBillId = null;
     initNewBillForm();
     await loadFirms();
-  } catch (e) { showBillError('Error saving bill: ' + e.message); }
+  } catch (e) {
+    showBillError('Error saving bill: ' + e.message);
+  } finally {
+    hideProcessingOverlay();
+  }
 }
 
 async function editBill(id) {
@@ -709,6 +797,52 @@ function showPmtError(message) {
   setTimeout(() => { errEl.style.display = 'none'; }, 5000);
 }
 
+// async function savePayment() {
+//   const firmId = parseInt(document.getElementById('pmt-firm-id').value);
+//   if (!firmId) { showPmtError('Please select a client before saving.'); return; }
+//   const amount = parseInt(document.getElementById('pmt-amount').value);
+//   if (!amount || amount <= 0) { showPmtError('Please enter a valid amount greater than zero.'); return; }
+//   const pmtDate = document.getElementById('pmt-date').value;
+//   if (!pmtDate) { showPmtError('Please enter a date.'); return; }
+
+//   const pmtData = {
+//     firm_id: firmId,
+//     payment_date: pmtDate,
+//     amount,
+//     method: document.getElementById('pmt-method').value,
+//     bank_name: document.getElementById('pmt-bank').value,
+//     cheque_number: document.getElementById('pmt-ref').value,
+//     memo: document.getElementById('pmt-memo').value,
+//   };
+
+//   try {
+//     const result = await api('/payments', 'POST', pmtData);
+//     const firm = allFirms.find(f => f.id === firmId);
+//     const hasAnomaly = !!result.anomaly;
+
+//     const entries = [];
+//     (result.recentBills || []).forEach(b => entries.push({
+//       date: fmtDate(b.bill_date), desc: `Bill # ${b.id}`,
+//       amount: fmt(b.total_amount), highlight: false
+//     }));
+//     (result.recentPmts || []).slice(0, 2).forEach(p => entries.push({
+//       date: fmtDate(p.payment_date),
+//       desc: p.method + (p.bank_name ? ' — ' + p.bank_name : ''),
+//       amount: fmt(p.amount), highlight: false
+//     }));
+
+//     showToast({
+//       title: hasAnomaly ? 'Payment saved — Overpayment detected' : 'Payment saved',
+//       subtitle: `Recent entries — ${firm?.name || ''}`,
+//       entries, hasAnomaly, firmId
+//     });
+
+//     initPaymentsForm();
+//     await loadRecentPayments();
+//     await loadFirms();
+//   } catch (e) { showPmtError('Error saving payment: ' + e.message); }
+// }
+
 async function savePayment() {
   const firmId = parseInt(document.getElementById('pmt-firm-id').value);
   if (!firmId) { showPmtError('Please select a client before saving.'); return; }
@@ -727,6 +861,7 @@ async function savePayment() {
     memo: document.getElementById('pmt-memo').value,
   };
 
+  showProcessingOverlay('Saving payment...');
   try {
     const result = await api('/payments', 'POST', pmtData);
     const firm = allFirms.find(f => f.id === firmId);
@@ -752,7 +887,11 @@ async function savePayment() {
     initPaymentsForm();
     await loadRecentPayments();
     await loadFirms();
-  } catch (e) { showPmtError('Error saving payment: ' + e.message); }
+  } catch (e) {
+    showPmtError('Error saving payment: ' + e.message);
+  } finally {
+    hideProcessingOverlay();
+  }
 }
 
 async function loadRecentPayments() {
