@@ -30,6 +30,23 @@ function hideProcessingOverlay() {
   document.getElementById('app-root')?.classList.remove('blurred');
 }
 
+// function showLoginScreen() {
+//   document.body.innerHTML = `
+//     <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e">
+//       <div style="background:#fff;border-radius:16px;padding:2rem;width:100%;max-width:360px;text-align:center">
+//         <div style="width:48px;height:48px;background:#C8A951;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem">
+//           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M3 21l7-7"/><circle cx="18" cy="6" r="3"/><path d="M10 14l4-4"/></svg>
+//         </div>
+//         <h2 style="font-size:18px;font-weight:500;margin-bottom:4px">Needle Craft</h2>
+//         <p style="font-size:13px;color:#888;margin-bottom:1.5rem">Enter password to continue</p>
+//         <input type="password" id="login-pw" placeholder="Password" style="width:100%;padding:10px 14px;font-size:14px;border:1px solid #d0d0cc;border-radius:8px;margin-bottom:10px;outline:none" onkeydown="if(event.key==='Enter')doLogin()">
+//         <div id="login-error" style="color:#A32D2D;font-size:12px;margin-bottom:8px;display:none">Incorrect password</div>
+//         <button onclick="doLogin()" style="width:100%;padding:10px;background:#1a1a2e;color:#C8A951;border:none;border-radius:8px;font-size:14px;cursor:pointer">Sign in</button>
+//       </div>
+//     </div>`;
+//   setTimeout(() => document.getElementById('login-pw')?.focus(), 100);
+// }
+
 function showLoginScreen() {
   document.body.innerHTML = `
     <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e">
@@ -39,27 +56,96 @@ function showLoginScreen() {
         </div>
         <h2 style="font-size:18px;font-weight:500;margin-bottom:4px">Needle Craft</h2>
         <p style="font-size:13px;color:#888;margin-bottom:1.5rem">Enter password to continue</p>
-        <input type="password" id="login-pw" placeholder="Password" style="width:100%;padding:10px 14px;font-size:14px;border:1px solid #d0d0cc;border-radius:8px;margin-bottom:10px;outline:none" onkeydown="if(event.key==='Enter')doLogin()">
-        <div id="login-error" style="color:#A32D2D;font-size:12px;margin-bottom:8px;display:none">Incorrect password</div>
-        <button onclick="doLogin()" style="width:100%;padding:10px;background:#1a1a2e;color:#C8A951;border:none;border-radius:8px;font-size:14px;cursor:pointer">Sign in</button>
+        <input type="password" id="login-pw" placeholder="Password"
+          style="width:100%;padding:10px 14px;font-size:14px;border:1px solid #d0d0cc;border-radius:8px;margin-bottom:10px;outline:none;transition:border-color 0.2s"
+          onkeydown="if(event.key==='Enter')doLogin()">
+        <div id="login-error"
+          style="color:#A32D2D;background:#FCEBEB;border:1px solid #F7C1C1;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px;display:none">
+          Incorrect password. Please try again.
+        </div>
+        <button id="login-btn" onclick="doLogin()"
+          style="width:100%;padding:10px;background:#1a1a2e;color:#C8A951;border:none;border-radius:8px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.2s">
+          Sign in
+        </button>
       </div>
     </div>`;
   setTimeout(() => document.getElementById('login-pw')?.focus(), 100);
 }
 
+// async function doLogin() {
+//   const pw = document.getElementById('login-pw').value;
+//   try {
+//     const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+//     const data = await res.json();
+//     if (data.success) {
+//       localStorage.setItem('nc_token', data.token);
+//       location.reload();
+//     } else {
+//       document.getElementById('login-error').style.display = 'block';
+//     }
+//   } catch (e) {
+//     document.getElementById('login-error').style.display = 'block';
+//   }
+// }
+
 async function doLogin() {
   const pw = document.getElementById('login-pw').value;
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  const input = document.getElementById('login-pw');
+
+  // Hide any previous error
+  errEl.style.display = 'none';
+  input.style.borderColor = '#d0d0cc';
+
+  if (!pw) {
+    errEl.textContent = 'Please enter your password.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Set loading state
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
+  btn.style.cursor = 'not-allowed';
+  btn.innerHTML = `
+    <span style="width:16px;height:16px;border:2px solid rgba(200,169,81,0.3);border-top-color:#C8A951;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block"></span>
+    Signing in...`;
+
   try {
-    const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
     const data = await res.json();
+
     if (data.success) {
       localStorage.setItem('nc_token', data.token);
       location.reload();
     } else {
-      document.getElementById('login-error').style.display = 'block';
+      // Wrong password
+      errEl.textContent = 'Incorrect password. Please try again.';
+      errEl.style.display = 'block';
+      input.style.borderColor = '#F7C1C1';
+      input.value = '';
+      input.focus();
+
+      // Reset button
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      btn.innerHTML = 'Sign in';
     }
   } catch (e) {
-    document.getElementById('login-error').style.display = 'block';
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+
+    // Reset button
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = 'Sign in';
   }
 }
 
