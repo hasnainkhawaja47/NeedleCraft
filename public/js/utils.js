@@ -99,7 +99,7 @@ function showToast({ title, subtitle, entries = [], hasAnomaly = false, firmId =
 
 // ─── CONFIRM DIALOG ──────────────────────────────────────────────────────────
 
-function confirm(message) {
+function askConfirm(message) {
   return window.confirm(message);
 }
 
