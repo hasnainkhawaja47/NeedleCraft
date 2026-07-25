@@ -1148,11 +1148,11 @@ tr:last-child td {
 
   @page {
     size: A5;
-    margin: 6mm
+    margin: 3mm
   }
 
   .print-doc {
-    max-width: 95% !important;
+    max-width: 100% !important;
     margin: 0 auto !important;
     color: #000 !important;
     font-size: 16px !important;
