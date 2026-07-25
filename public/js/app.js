@@ -1481,7 +1481,10 @@ function clearLedgerFilter() {
   loadLedger();
 }
 
-function printLedger() { window.print(); }
+function printLedger() {
+  document.getElementById('page-ledger').classList.add('active');
+  window.print();
+}
 function exportLedgerPDF() {
   alert('To export as PDF: use the Print button and select "Save as PDF" as your printer.');
 }

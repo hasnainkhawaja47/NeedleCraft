@@ -1138,7 +1138,7 @@ tr:last-child td {
     display: none !important
   }
 
-  #page-print {
+  .page.active {
     display: block !important
   }
 
