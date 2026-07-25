@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Needle Craft Database Manager",
   "scripts": {
-    "dev": "vercel dev",
     "migrate": "node scripts/migrate.js"
   },
   "dependencies": {

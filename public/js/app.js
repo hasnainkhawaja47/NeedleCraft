@@ -842,7 +842,15 @@ function previewPrint() {
   document.getElementById('page-print').classList.add('active');
 }
 
-function hidePrint() { showPage('new-bill'); }
+// function hidePrint() { showPage('new-bill'); }
+
+function hidePrint() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-new-bill').classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === 'new-bill');
+  });
+}
 
 // ─── PAYMENTS ─────────────────────────────────────────────────────────────────
 function initPaymentsForm() {
