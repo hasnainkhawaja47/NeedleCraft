@@ -5,6 +5,7 @@ function checkAuth() {
   if (!token) { showLoginScreen(); return false; }
   return true;
 }
+window.onafterprint = hidePrint;
 
 // ─── PROCESSING OVERLAY ───────────────────────────────────────────────────────
 function showProcessingOverlay(message = 'Saving...') {
@@ -959,6 +960,74 @@ function previewPrint() {
   document.getElementById('print-content').innerHTML = html;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-print').classList.add('active');
+}
+
+function quickPrint() {
+  const firmId = document.getElementById('bill-firm-id').value;
+  if (!firmId) { showBillError('Please select a client first.'); return; }
+  const firm = allFirms.find(f => f.id == firmId);
+  const billDate = document.getElementById('bill-date').value;
+  const biltyNo = document.getElementById('bill-bilty').value;
+  const doNo = document.getElementById('bill-do').value;
+  const billType = document.getElementById('bill-type').value;
+  const items = collectBillItems();
+  if (!items.length) { showBillError('Please add items before printing.'); return; }
+  const biltyCharges = parseInt(document.getElementById('bill-bilty-charges').value) || 0;
+  const pkgCharges = parseInt(document.getElementById('bill-pkg-charges').value) || 0;
+  const grand = items.reduce((s, i) => s + i.total, 0) + biltyCharges + pkgCharges;
+  const prevBalText = document.getElementById('prev-bal-val')?.textContent?.replace(/[₨,\s]/g, '') || '0';
+  const prevBal = parseFloat(prevBalText) || 0;
+  const newBal = prevBal + grand;
+  const billNum = editingBillId || document.getElementById('next-bill-num').textContent;
+
+  const html = `
+    <div class="print-doc">
+      <div class="print-header">
+        <div class="print-logo">NEEDLE CRAFT</div>
+        <div class="print-sub">Ph: 051-5540343</div>
+      </div>
+      <div class="print-meta">
+        <div>
+          <strong>Bill #:</strong> ${billNum}<br>
+          ${biltyNo ? `<strong>Bilty #:</strong> ${biltyNo}<br>` : ''}
+          ${doNo ? `<strong>D/O #:</strong> ${doNo}` : ''}
+        </div>
+        <div style="text-align:right">
+          <strong>Date:</strong> ${fmtDate(billDate)}<br>
+          <strong>Type:</strong> ${billType === 'credit' ? 'Credit' : 'Cash'}<br>
+          <strong>Client:</strong> ${firm?.name || '—'}
+        </div>
+      </div>
+      <table class="print-table">
+        <thead><tr><th>#</th><th>Particular</th><th>Colour</th><th>Size</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
+        <tbody>${items.map((item, i) => `
+          <tr>
+            <td>${i + 1}</td><td>${item.product_name}</td>
+            <td>${item.colour || ''}</td><td>${item.size || ''}</td>
+            <td>${item.quantity}</td><td>${fmtNum(item.price)}</td><td>${fmtNum(item.total)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="print-totals">
+        ${biltyCharges ? `<div>Bilty charges: ${fmtNum(biltyCharges)}</div>` : ''}
+        ${pkgCharges ? `<div>Packaging: ${fmtNum(pkgCharges)}</div>` : ''}
+        <div style="font-size:15px;font-weight:700;margin-top:5px">Total: Rs. ${fmtNum(grand)}</div>
+        <div class="print-words">${amountInWords(grand)}</div>
+      </div>
+      <div class="print-balances">
+        <div>Previous balance: Rs. ${fmtNum(prevBal)}</div>
+        <div><strong>New balance: Rs. ${fmtNum(newBal)}</strong></div>
+      </div>
+      <div class="print-footer">Thank you for your business</div>
+    </div>`;
+
+  document.getElementById('print-content').innerHTML = html;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-print').classList.add('active');
+
+  setTimeout(() => {
+    window.print();
+  }, 100);
 }
 
 // function hidePrint() { showPage('new-bill'); }
