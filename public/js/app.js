@@ -157,6 +157,19 @@ let currentLedgerFirmId = null;
 let editingBillId = null;
 let revenueChart = null;
 let effChart = null;
+let printReturnPage = 'new-bill';
+
+window.onafterprint = () => {
+  if (printReturnPage === 'new-bill') {
+    hidePrint();
+  } else {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + printReturnPage).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.page === printReturnPage);
+    });
+  }
+};
 
 // ─── LOADING HELPERS ──────────────────────────────────────────────────────────
 function showLoading(elementId, message = 'Loading...') {
@@ -899,6 +912,7 @@ async function deleteBill(id) {
 
 // ─── PRINT ────────────────────────────────────────────────────────────────────
 function previewPrint() {
+  printReturnPage = 'new-bill';
   const firmId = document.getElementById('bill-firm-id').value;
   if (!firmId) { showBillError('Please select a client first.'); return; }
   const firm = allFirms.find(f => f.id == firmId);
@@ -963,6 +977,7 @@ function previewPrint() {
 }
 
 function quickPrint() {
+  printReturnPage = 'new-bill';
   const firmId = document.getElementById('bill-firm-id').value;
   if (!firmId) { showBillError('Please select a client first.'); return; }
   const firm = allFirms.find(f => f.id == firmId);
@@ -1482,6 +1497,7 @@ function clearLedgerFilter() {
 }
 
 function printLedger() {
+  printReturnPage = 'ledger';
   document.getElementById('page-ledger').classList.add('active');
   window.print();
 }
