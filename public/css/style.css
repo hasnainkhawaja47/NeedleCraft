@@ -1152,7 +1152,7 @@ tr:last-child td {
   }
 
   .print-doc {
-    max-width: 80% !important;
+    max-width: 95% !important;
     margin: 0 auto !important;
     color: #000 !important;
     font-size: 16px !important;
