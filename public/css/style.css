@@ -1121,91 +1121,91 @@ tr:last-child td {
 }
 
 @media print {
-
-  .sidebar,
-  .no-print,
-  #toast-container,
-  .modal-overlay {
-    display: none !important
-  }
-
-  .content {
-    margin-left: 0 !important;
-    padding: 0 !important
-  }
-
-  .page {
-    display: none !important
-  }
-
-  #page-print {
-    display: block !important
-  }
-
-  body {
-    background: #fff
-  }
-
-  @page {
-    size: A5;
-    margin: 6mm
-  }
-
   .print-doc {
-    max-width: 100% !important;
+    max-width: 80% !important;
+    margin: 0 auto !important;
     color: #000 !important;
     font-size: 16px !important;
   }
+}
 
-  .print-doc * {
-    color: #000 !important;
-    border-color: #000 !important;
-  }
+.content {
+  margin-left: 0 !important;
+  padding: 0 !important
+}
 
-  .print-logo {
-    font-size: 26px !important;
-  }
+.page {
+  display: none !important
+}
 
-  .print-sub {
-    font-size: 13px !important;
-  }
+#page-print {
+  display: block !important
+}
 
-  .print-meta {
-    font-size: 14px !important;
-  }
+body {
+  background: #fff
+}
 
-  .print-table {
-    font-size: 14px !important;
-  }
+@page {
+  size: A5;
+  margin: 6mm
+}
 
-  .print-table th,
-  .print-table td {
-    padding: 6px 7px !important;
-  }
+.print-doc {
+  max-width: 100% !important;
+  color: #000 !important;
+  font-size: 16px !important;
+}
 
-  .print-table th {
-    background: #eee !important;
-  }
+.print-doc * {
+  color: #000 !important;
+  border-color: #000 !important;
+}
 
-  .print-totals {
-    font-size: 16px !important;
-  }
+.print-logo {
+  font-size: 26px !important;
+}
 
-  .print-totals div:last-child {
-    font-size: 19px !important;
-  }
+.print-sub {
+  font-size: 13px !important;
+}
 
-  .print-words {
-    font-size: 13px !important;
-  }
+.print-meta {
+  font-size: 14px !important;
+}
 
-  .print-balances {
-    font-size: 14px !important;
-  }
+.print-table {
+  font-size: 14px !important;
+}
 
-  .print-footer {
-    font-size: 11px !important;
-  }
+.print-table th,
+.print-table td {
+  padding: 6px 7px !important;
+}
+
+.print-table th {
+  background: #eee !important;
+}
+
+.print-totals {
+  font-size: 16px !important;
+}
+
+.print-totals div:last-child {
+  font-size: 19px !important;
+}
+
+.print-words {
+  font-size: 13px !important;
+}
+
+.print-balances {
+  font-size: 14px !important;
+}
+
+.print-footer {
+  font-size: 11px !important;
+}
 }
 
 .print-doc {
