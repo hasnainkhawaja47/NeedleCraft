@@ -654,6 +654,70 @@ function showBillError(message) {
 //   } catch (e) { showBillError('Error saving bill: ' + e.message); }
 // }
 
+// async function saveBill() {
+//   const firmId = parseInt(document.getElementById('bill-firm-id').value);
+//   if (!firmId) { showBillError('Please select a client before saving.'); return; }
+//   const billDate = document.getElementById('bill-date').value;
+//   if (!billDate) { showBillError('Please enter a date.'); return; }
+//   const items = collectBillItems();
+//   if (items.length === 0) { showBillError('Please add at least one item with quantity and price.'); return; }
+
+//   const total = items.reduce((s, i) => s + i.total, 0)
+//     + (parseInt(document.getElementById('bill-bilty-charges').value) || 0)
+//     + (parseInt(document.getElementById('bill-pkg-charges').value) || 0);
+
+//   const billData = {
+//     firm_id: firmId,
+//     bill_date: billDate,
+//     bilty_no: document.getElementById('bill-bilty').value,
+//     do_no: document.getElementById('bill-do').value,
+//     bilty_charges: parseInt(document.getElementById('bill-bilty-charges').value) || 0,
+//     packaging_charges: parseInt(document.getElementById('bill-pkg-charges').value) || 0,
+//     total_amount: total,
+//     is_credit: document.getElementById('bill-type').value === 'credit',
+//     items
+//   };
+
+//   showProcessingOverlay('Saving bill...');
+//   try {
+//     let result;
+//     if (editingBillId) {
+//       result = await api(`/bills?id=${editingBillId}`, 'PUT', billData);
+//       result.anomalies = [];
+//     } else {
+//       result = await api('/bills', 'POST', billData);
+//     }
+
+//     const firm = allFirms.find(f => f.id === firmId);
+//     const hasAnomaly = result.anomalies && result.anomalies.length > 0;
+
+//     const toastEntries = (result.recentBills || []).map(b => ({
+//       date: fmtDate(b.bill_date),
+//       desc: `Bill # ${b.id}`,
+//       amount: fmt(b.total_amount),
+//       highlight: hasAnomaly && b.total_amount === total && b.id !== result.bill?.id
+//     }));
+
+//     showToast({
+//       title: hasAnomaly
+//         ? `Bill saved — ${result.anomalies[0].type} detected`
+//         : (editingBillId ? 'Bill updated' : 'Bill saved'),
+//       subtitle: `Recent entries — ${firm?.name || ''}`,
+//       entries: toastEntries,
+//       hasAnomaly,
+//       firmId
+//     });
+
+//     editingBillId = null;
+//     initNewBillForm();
+//     await loadFirms();
+//   } catch (e) {
+//     showBillError('Error saving bill: ' + e.message);
+//   } finally {
+//     hideProcessingOverlay();
+//   }
+// }
+
 async function saveBill() {
   const firmId = parseInt(document.getElementById('bill-firm-id').value);
   if (!firmId) { showBillError('Please select a client before saving.'); return; }
@@ -708,9 +772,12 @@ async function saveBill() {
       firmId
     });
 
-    editingBillId = null;
-    initNewBillForm();
+    // Keep the form populated instead of wiping it — set editingBillId
+    // to the saved bill so any further Save re-uses PUT (update), not a new bill.
+    editingBillId = result.bill.id;
+    document.getElementById('next-bill-num').textContent = result.bill.id;
     await loadFirms();
+    await loadPrevBalance(firmId);
   } catch (e) {
     showBillError('Error saving bill: ' + e.message);
   } finally {
