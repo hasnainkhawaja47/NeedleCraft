@@ -718,12 +718,64 @@ async function saveBill() {
   }
 }
 
+// async function editBill(id) {
+//   try {
+//     const bill = await api(`/bills?id=${id}`);
+//     editingBillId = id;
+//     showPage('new-bill');
+//     document.querySelector('.nav-btn[data-page="new-bill"]').classList.add('active');
+//     await new Promise(r => setTimeout(r, 50));
+
+//     const firm = allFirms.find(f => f.id === bill.firm_id);
+//     document.getElementById('bill-client-input').value = firm?.name || '';
+//     document.getElementById('bill-firm-id').value = bill.firm_id;
+//     document.getElementById('bill-date').value = bill.bill_date;
+//     document.getElementById('bill-bilty').value = bill.bilty_no || '';
+//     document.getElementById('bill-do').value = bill.do_no || '';
+//     document.getElementById('bill-bilty-charges').value = bill.bilty_charges || 0;
+//     document.getElementById('bill-pkg-charges').value = bill.packaging_charges || 0;
+//     document.getElementById('next-bill-num').textContent = bill.id;
+
+//     if (!bill.is_credit) {
+//       document.querySelectorAll('#page-new-bill .tog-btn').forEach(b => b.classList.remove('active'));
+//       document.querySelector('#page-new-bill .tog-btn:first-child').classList.add('active');
+//       document.getElementById('bill-type').value = 'cash';
+//     }
+
+//     const tbody = document.getElementById('bill-items-body');
+//     tbody.innerHTML = '';
+//     (bill.bill_items || []).forEach(item => {
+//       addBillRow();
+//       const row = tbody.lastElementChild;
+//       row.querySelector('.particular-input').value = item.product_name;
+//       row.cells[2].querySelector('input').value = item.colour || '';
+//       row.cells[3].querySelector('input').value = item.size || '';
+//       row.querySelectorAll('input[type=number]')[0].value = item.quantity || 0;
+//       row.querySelectorAll('input[type=number]')[1].value = item.price || 0;
+//       row.cells[6].textContent = fmtNum(item.total);
+//     });
+//     addBillRow();
+//     recalcTotal();
+//     await loadPrevBalance(bill.firm_id);
+
+//     buildSearchDropdown('bill-client-input', 'bill-client-dropdown', allFirms, 'bill-firm-id', async (id) => {
+//       await loadPrevBalance(id);
+//     });
+//   } catch (e) { showBillError('Error loading bill: ' + e.message); }
+// }
+
 async function editBill(id) {
   try {
     const bill = await api(`/bills?id=${id}`);
+
+    // Switch to new-bill page WITHOUT resetting editingBillId
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-new-bill').classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.page === 'new-bill');
+    });
+
     editingBillId = id;
-    showPage('new-bill');
-    document.querySelector('.nav-btn[data-page="new-bill"]').classList.add('active');
     await new Promise(r => setTimeout(r, 50));
 
     const firm = allFirms.find(f => f.id === bill.firm_id);
