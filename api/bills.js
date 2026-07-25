@@ -1,17 +1,21 @@
 const supabase = require('./_supabase');
 
-async function checkAnomalies(bill, firmId) {
+async function checkAnomalies(bill, firmId, excludeBillId) {
   const anomalies = [];
 
   // 1. Duplicate: same firm, same amount, same date
-  const { data: dupes } = await supabase.from('bills')
+  let dupeQuery = supabase.from('bills')
     .select('id')
     .eq('firm_id', firmId)
     .eq('total_amount', bill.total_amount)
     .eq('bill_date', bill.bill_date);
+  if (excludeBillId) dupeQuery = dupeQuery.neq('id', excludeBillId);
+  const { data: dupes } = await dupeQuery;
   if (dupes && dupes.length > 0) {
     anomalies.push({ type: 'Duplicate', firm_id: firmId, details: `₨${bill.total_amount.toLocaleString()} entered again on ${bill.bill_date}`, reference_type: 'bill' });
   }
+
+  // ... rest unchanged
 
   // 2. Unusually large: > 3x average of last 10 bills
   // const { data: lastBills } = await supabase.from('bills')
@@ -145,7 +149,7 @@ module.exports = async (req, res) => {
       }
 
       // Check anomalies
-      const anomalies = await checkAnomalies(billRecord, firm_id);
+      const anomalies = await checkAnomalies(billRecord, firm_id, newBill.id);
       for (const a of anomalies) {
         const { data: firm } = await supabase.from('firms').select('name').eq('id', firm_id).single();
         await supabase.from('anomalies').insert({ ...a, firm_name: firm?.name, reference_id: newBill.id });
