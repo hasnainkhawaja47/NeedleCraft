@@ -1479,6 +1479,66 @@ function setSearchMode(mode) {
   });
 }
 
+// async function loadBillSearch() {
+//   showLoading('search-result', 'Searching...');
+//   try {
+//     const activeMode = ['date', 'bill', 'do'].find(m =>
+//       document.getElementById(`search-mode-${m}`).classList.contains('active')
+//     );
+
+//     let url = '/bills?search=1';
+//     if (activeMode === 'date') {
+//       const from = document.getElementById('sr-from').value;
+//       const to = document.getElementById('sr-to').value;
+//       if (!from && !to) {
+//         document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter at least one date.</p>';
+//         return;
+//       }
+//       if (from) url += `&from=${from}`;
+//       if (to) url += `&to=${to}`;
+//     } else if (activeMode === 'bill') {
+//       const billNo = document.getElementById('sr-bill').value.trim();
+//       if (!billNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a bill number.</p>'; return; }
+//       url += `&bill_no=${encodeURIComponent(billNo)}`;
+//     } else if (activeMode === 'do') {
+//       const doNo = document.getElementById('sr-do').value.trim();
+//       if (!doNo) { document.getElementById('search-result').innerHTML = '<p class="empty-state">Please enter a D/O number.</p>'; return; }
+//       url += `&do_no=${encodeURIComponent(doNo)}`;
+//     }
+
+//     const data = await api(url);
+//     const total = data.reduce((s, b) => s + b.total_amount, 0);
+
+//     document.getElementById('search-result').innerHTML = data.length === 0
+//       ? '<p class="empty-state">No bills found.</p>'
+//       : `<div style="font-size:12px;color:#888;margin-bottom:6px">${data.length} bill${data.length !== 1 ? 's' : ''} found</div>
+//          <table style="table-layout:auto;width:100%">
+//            <thead><tr><th>Bill #</th><th>Client</th><th>Date</th><th>D/O #</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+//            <tbody>${data.map(b => `
+//              <tr>
+//                <td>${b.id}</td>
+//                <td style="white-space:normal">${b.firms?.name || '—'}</td>
+//                <td style="white-space:nowrap">${fmtDate(b.bill_date)}</td>
+//                <td>${b.do_no || '—'}</td>
+//                <td style="text-align:right">${fmt(b.total_amount)}</td>
+//                <td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="reprintBill(${b.id})">
+//                  <i class="ti ti-printer"></i>
+//                </button></td>
+//              </tr>`).join('')}
+//            </tbody>
+//            <tfoot>
+//              <tr>
+//                <td colspan="4" style="font-weight:500;padding-top:8px">Total</td>
+//                <td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td>
+//                <td></td>
+//              </tr>
+//            </tfoot>
+//          </table>`;
+//   } catch (e) {
+//     showError('search-result', 'Search failed: ' + e.message);
+//   }
+// }
+
 async function loadBillSearch() {
   showLoading('search-result', 'Searching...');
   try {
@@ -1508,6 +1568,7 @@ async function loadBillSearch() {
 
     const data = await api(url);
     const total = data.reduce((s, b) => s + b.total_amount, 0);
+    const showTotal = activeMode === 'date';
 
     document.getElementById('search-result').innerHTML = data.length === 0
       ? '<p class="empty-state">No bills found.</p>'
@@ -1521,18 +1582,19 @@ async function loadBillSearch() {
                <td style="white-space:nowrap">${fmtDate(b.bill_date)}</td>
                <td>${b.do_no || '—'}</td>
                <td style="text-align:right">${fmt(b.total_amount)}</td>
-               <td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="reprintBill(${b.id})">
-                 <i class="ti ti-printer"></i>
+               <td><button class="btn-sec" style="font-size:11px;padding:3px 8px" onclick="closeModalDirect(); editBill(${b.id})">
+                 <i class="ti ti-arrow-right"></i>
                </button></td>
              </tr>`).join('')}
            </tbody>
+           ${showTotal ? `
            <tfoot>
              <tr>
                <td colspan="4" style="font-weight:500;padding-top:8px">Total</td>
                <td style="text-align:right;font-weight:500;padding-top:8px">${fmt(total)}</td>
                <td></td>
              </tr>
-           </tfoot>
+           </tfoot>` : ''}
          </table>`;
   } catch (e) {
     showError('search-result', 'Search failed: ' + e.message);
