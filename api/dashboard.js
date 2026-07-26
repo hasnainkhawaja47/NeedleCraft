@@ -3,7 +3,7 @@ const supabase = require('./_supabase');
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
-
+  res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
   try {
     const today = new Date().toISOString().split('T')[0];
     const sixMonthsAgo = new Date();

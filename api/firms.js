@@ -25,6 +25,7 @@ module.exports = async (req, res) => {
       }
 
       // All firms
+      res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30');
       const [{ data: firms }, { data: balances }] = await Promise.all([
         supabase.from('firms').select('*').order('name'),
         supabase.rpc('get_firm_balances'),
