@@ -1446,7 +1446,8 @@ async function loadLedger() {
       <div class="metric-card"><div class="metric-label">Total billed</div><div class="metric-value">${fmt(data.totalBilled)}</div></div>
       <div class="metric-card"><div class="metric-label">Total paid</div><div class="metric-value paid-amount">${fmt(data.totalPaid)}</div></div>
       <div class="metric-card"><div class="metric-label">Balance due</div><div class="metric-value ${data.balance > 0 ? 'balance-owed' : 'balance-clear'}">${fmt(data.balance)}</div></div>`;
-
+    document.getElementById('ledger-print-range').textContent =
+      `Statement period: ${from ? fmtDate(from) : 'Beginning'} to ${to ? fmtDate(to) : 'Today'}`;
     if (!data.entries.length) {
       document.getElementById('ledger-table').innerHTML = '<p class="empty-state">No entries found for this date range.</p>';
       return;
@@ -1461,7 +1462,7 @@ async function loadLedger() {
             <th style="text-align:right;width:100px">Credit</th>
             <th style="text-align:right;width:100px">Debit</th>
             <th style="text-align:right;width:100px">Balance</th>
-            <th style="width:65px"></th>
+            <th style="width:65px" class="no-print"></th>
           </tr>
         </thead>
         <tbody>
@@ -1472,7 +1473,7 @@ async function loadLedger() {
     <td style="text-align:right;white-space:nowrap;color:#888">${e.type === 'opening' ? '—' : e.credit > 0 ? fmtNum(e.credit) : '—'}</td>
     <td style="text-align:right;white-space:nowrap;color:#888">${e.type === 'opening' ? '—' : e.debit > 0 ? fmtNum(e.debit) : '—'}</td>
     <td style="text-align:right;white-space:nowrap;font-weight:500" class="${e.balance > 0 ? 'balance-owed' : e.balance < 0 ? 'balance-clear' : ''}">${fmtNum(e.balance)}</td>
-    <td>
+    <td class="no-print">
       ${e.type === 'opening' ? '' : e.isActive ? `
         <div class="action-btns">
           ${e.type === 'bill'
