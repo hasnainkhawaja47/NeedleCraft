@@ -1,22 +1,5 @@
 const supabase = require('./_supabase');
 
-async function getAllRows(table, columns) {
-  let allRows = [];
-  let from = 0;
-  const pageSize = 1000;
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(columns)
-      .range(from, from + pageSize - 1);
-    if (error || !data || data.length === 0) break;
-    allRows = allRows.concat(data);
-    if (data.length < pageSize) break;
-    from += pageSize;
-  }
-  return allRows;
-}
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -29,45 +12,31 @@ module.exports = async (req, res) => {
   try {
     if (method === 'GET') {
       if (query.id) {
-        const { data } = await supabase
-          .from('firms').select('*').eq('id', query.id).single();
-
-        const [bills, pmts, archBills, archPmts] = await Promise.all([
-          getAllRows('bills', 'firm_id, total_amount'),
-          getAllRows('payments', 'firm_id, amount'),
-          getAllRows('archive_bills', 'firm_id, total_amount'),
-          getAllRows('archive_payments', 'firm_id, amount'),
+        const id = parseInt(query.id);
+        const [{ data: firm }, { data: balanceRows }] = await Promise.all([
+          supabase.from('firms').select('*').eq('id', id).single(),
+          supabase.rpc('get_firm_balance', { p_firm_id: id }),
         ]);
 
-        const id = parseInt(query.id);
-        const totalBilled =
-          bills.filter(b => b.firm_id === id).reduce((s, b) => s + (b.total_amount || 0), 0) +
-          archBills.filter(b => b.firm_id === id).reduce((s, b) => s + (b.total_amount || 0), 0);
-        const totalPaid =
-          pmts.filter(p => p.firm_id === id).reduce((s, p) => s + (p.amount || 0), 0) +
-          archPmts.filter(p => p.firm_id === id).reduce((s, p) => s + (p.amount || 0), 0);
+        const row = (balanceRows && balanceRows[0]) || {};
+        const balance = (row.billed || 0) - (row.paid || 0);
 
-        return res.json({ ...data, balance: totalBilled - totalPaid });
+        return res.json({ ...firm, balance });
       }
 
       // All firms
-      const { data: firms } = await supabase.from('firms').select('*').order('name');
-      if (!firms || !firms.length) return res.json([]);
-
-      const [bills, pmts, archBills, archPmts] = await Promise.all([
-        getAllRows('bills', 'firm_id, total_amount'),
-        getAllRows('payments', 'firm_id, amount'),
-        getAllRows('archive_bills', 'firm_id, total_amount'),
-        getAllRows('archive_payments', 'firm_id, amount'),
+      const [{ data: firms }, { data: balances }] = await Promise.all([
+        supabase.from('firms').select('*').order('name'),
+        supabase.rpc('get_firm_balances'),
       ]);
+      if (!firms || !firms.length) return res.json([]);
 
       const billedMap = {};
       const paidMap = {};
-
-      bills.forEach(b => { billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0); });
-      archBills.forEach(b => { billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0); });
-      pmts.forEach(p => { paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0); });
-      archPmts.forEach(p => { paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0); });
+      (balances || []).forEach(b => {
+        billedMap[b.firm_id] = b.billed || 0;
+        paidMap[b.firm_id] = b.paid || 0;
+      });
 
       const result = firms.map(f => ({
         ...f,
