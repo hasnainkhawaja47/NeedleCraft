@@ -195,7 +195,6 @@ h1 {
   font-weight: 500
 }
 
-/* .red{color:#A32D2D}.green{color:#3B6D11}.blue{color:#185FA5}.gold{color:#854F0B} */
 .red {
   color: #A32D2D
 }
@@ -978,140 +977,149 @@ tr:last-child td {
   color: #888
 }
 
-/* PRINT */
-/* .print-note {
-  font-size: 12px;
+/* LOADING & ERROR STATES */
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 1.5rem;
   color: #888;
-  text-align: center;
-  margin-bottom: 1rem
+  font-size: 13px
 }
 
-@media print {
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #e5e5e0;
+  border-top-color: #1a1a2e;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0
+}
 
-  .sidebar,
-  .no-print,
-  #toast-container,
-  .modal-overlay {
-    display: none !important
-  }
-
-  .content {
-    margin-left: 0 !important;
-    padding: 0 !important
-  }
-
-  .page {
-    display: none !important
-  }
-
-  #page-print {
-    display: block !important
-  }
-
-  body {
-    background: #fff
-  }
-
-  @page {
-    size: A5;
-    margin: 10mm
+@keyframes spin {
+  to {
+    transform: rotate(360deg)
   }
 }
 
-.print-doc {
-  background: #fff;
-  max-width: 500px;
-  margin: 0 auto;
+.error-state {
   padding: 1rem;
-  font-family: Georgia, serif;
-  color: #111;
-  font-size: 12px
-}
-
-.print-header {
-  text-align: center;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 10px;
-  margin-bottom: 12px
-}
-
-.print-logo {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #1a1a2e
-}
-
-.print-sub {
-  font-size: 10px;
-  color: #555;
-  margin-top: 2px
-}
-
-.print-meta {
+  color: #A32D2D;
+  font-size: 13px;
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 6px
+}
+
+.empty-state {
+  color: #888;
+  font-size: 13px;
+  padding: 12px
+}
+
+.inline-error {
+  background: #FCEBEB;
+  color: #791F1F;
+  border: 1px solid #F7C1C1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
   margin-bottom: 10px;
-  font-size: 11px
+  display: none
 }
 
-.print-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-  margin-bottom: 10px
+/* SCROLLABLE CLIENT TABLE */
+.scroll-table {
+  max-height: 300px;
+  overflow-y: auto
 }
 
-.print-table th {
-  border: 1px solid #999;
-  padding: 4px 5px;
-  background: #f5f5f5;
-  font-weight: 600
+.scroll-table-clients {
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  border-radius: 0 0 12px 12px
 }
 
-.print-table td {
-  border: 1px solid #ccc;
-  padding: 4px 5px
+.scroll-table-clients table {
+  margin: 0
 }
 
-.print-totals {
-  text-align: right;
-  font-size: 12px;
-  border-top: 1px solid #ccc;
-  padding-top: 8px
+.scroll-table-clients thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1
 }
 
-.print-words {
-  font-size: 10px;
-  color: #555;
-  margin-top: 3px;
-  font-style: italic
+/* PROCESSING OVERLAY */
+#processing-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
 }
 
-.print-balances {
+.processing-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 32px;
   display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-  font-size: 11px;
-  border-top: 1px solid #eee;
-  padding-top: 6px
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
-.print-footer {
-  text-align: center;
-  font-size: 9px;
-  color: #888;
-  margin-top: 12px;
-  border-top: 1px solid #eee;
-  padding-top: 8px
-} */
+.blurred>*:not(#processing-overlay) {
+  filter: blur(3px);
+  pointer-events: none;
+  user-select: none;
+}
 
-.print-note {
+/* LEDGER TABLE (on-screen) */
+#page-ledger .card {
+  padding: 0;
+  overflow-x: auto;
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+}
+
+#page-ledger .card table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+#page-ledger .card table thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+  padding: 8px 10px;
   font-size: 12px;
   color: #888;
-  text-align: center;
-  margin-bottom: 1rem
+  border-bottom: 1px solid #e5e5e0;
+  font-weight: 400;
+  white-space: nowrap;
 }
+
+#page-ledger .card table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f0f0ec;
+}
+
+#page-ledger .card table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ============================================================
+   PRINT — single consolidated section
+   ============================================================ */
 
 .print-note {
   font-size: 12px;
@@ -1122,147 +1130,6 @@ tr:last-child td {
 
 .print-only {
   display: none;
-}
-
-@media print {
-
-  .sidebar,
-  .no-print,
-  #toast-container,
-  .modal-overlay {
-    display: none !important
-  }
-
-  .content {
-    margin-left: 0 !important;
-    padding: 0 !important
-  }
-
-  .page {
-    display: none !important
-  }
-
-  .page.active {
-    display: block !important
-  }
-
-  body {
-    background: #fff
-  }
-
-  @page {
-    size: A5;
-    margin: 5mm
-  }
-
-  .print-doc {
-    max-width: 98% !important;
-    margin: 0 auto !important;
-    color: #000 !important;
-    font-size: 16px !important;
-  }
-
-  .print-doc * {
-    color: #000 !important;
-    border-color: #000 !important;
-  }
-
-  .print-logo {
-    font-size: 26px !important;
-  }
-
-  .print-sub {
-    font-size: 13px !important;
-  }
-
-  .print-meta {
-    font-size: 14px !important;
-  }
-
-  .print-table {
-    font-size: 14px !important;
-  }
-
-  .print-table th,
-  .print-table td {
-    padding: 6px 7px !important;
-  }
-
-  .print-table th {
-    background: #eee !important;
-  }
-
-  .print-totals {
-    font-size: 16px !important;
-  }
-
-  .print-totals div:last-child {
-    font-size: 19px !important;
-  }
-
-  .print-words {
-    font-size: 13px !important;
-  }
-
-  .print-balances {
-    font-size: 14px !important;
-  }
-
-  .print-footer {
-    font-size: 11px !important;
-  }
-
-  #page-ledger {
-    padding: 10mm !important;
-    color: #000 !important;
-  }
-
-  #page-ledger * {
-    color: #000 !important;
-    border-color: #000 !important;
-  }
-
-  #page-ledger h1 {
-    font-size: 20px !important;
-    text-align: center;
-    margin-bottom: 10px;
-  }
-
-  #page-ledger .metrics-row {
-    display: flex !important;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-
-  #page-ledger table {
-    width: 100% !important;
-    border-collapse: collapse;
-    font-size: 12px !important;
-  }
-
-  #page-ledger table th,
-  #page-ledger table td {
-    border: 1px solid #000 !important;
-    padding: 4px 6px !important;
-  }
-
-  #page-ledger table th {
-    background: #eee !important;
-  }
-
-  #page-ledger .card {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  .print-only {
-    display: block !important;
-    text-align: center;
-    font-size: 12px;
-    margin-bottom: 10px;
-    color: #000 !important;
-  }
-
 }
 
 .print-doc {
@@ -1396,161 +1263,148 @@ tr:last-child td {
   padding-top: 8px
 }
 
-/* LOADING & ERROR STATES */
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 1.5rem;
-  color: #888;
-  font-size: 13px
-}
+@media print {
 
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid #e5e5e0;
-  border-top-color: #1a1a2e;
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-  flex-shrink: 0
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg)
+  .sidebar,
+  .no-print,
+  #toast-container,
+  .modal-overlay {
+    display: none !important
   }
-}
 
-.error-state {
-  padding: 1rem;
-  color: #A32D2D;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px
-}
+  .content {
+    margin-left: 0 !important;
+    padding: 0 !important
+  }
 
-.empty-state {
-  color: #888;
-  font-size: 13px;
-  padding: 12px
-}
+  .page {
+    display: none !important
+  }
 
-.inline-error {
-  background: #FCEBEB;
-  color: #791F1F;
-  border: 1px solid #F7C1C1;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  margin-bottom: 10px;
-  display: none
-}
+  .page.active {
+    display: block !important
+  }
 
-/* SCROLLABLE CLIENT TABLE */
-.scroll-table-clients {
-  max-height: 500px;
-  overflow-y: auto
-}
+  body {
+    background: #fff
+  }
 
-.scroll-table {
-  max-height: 300px;
-  overflow-y: auto
-}
+  @page {
+    size: A5;
+    margin: 5mm
+  }
 
-/* SCROLLABLE TABLE — only the table scrolls, not the page */
-.scroll-table-clients {
-  max-height: calc(100vh - 280px);
-  overflow-y: auto;
-  border-radius: 0 0 12px 12px
-}
+  @page ledger {
+    size: A4;
+    margin: 15mm
+  }
 
-.scroll-table-clients table {
-  margin: 0
-}
+  #page-ledger {
+    page: ledger;
+    padding: 15mm !important;
+    color: #000 !important;
+  }
 
-.scroll-table-clients thead th {
-  position: sticky;
-  top: 0;
-  background: #fff;
-  z-index: 1
-}
+  #page-ledger * {
+    color: #000 !important;
+    border-color: #000 !important;
+  }
 
-/* LEDGER SCROLLABLE TABLE ONLY */
-/* #page-ledger .card {
-  max-height: calc(100vh - 320px);
-  overflow-y: auto;
-  padding: 0;
-}
+  #page-ledger h1 {
+    font-size: 22px !important;
+    text-align: center;
+    margin-bottom: 10px;
+  }
 
-#page-ledger .card table thead th {
-  position: sticky;
-  top: 0;
-  background: #fff;
-  z-index: 1;
-} */
+  #page-ledger .metrics-row {
+    display: flex !important;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
 
-#processing-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  z-index: 9999;
-  align-items: center;
-  justify-content: center;
-}
+  #page-ledger table {
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 13px !important;
+  }
 
-.processing-box {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px 32px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
+  #page-ledger table th,
+  #page-ledger table td {
+    border: 1px solid #000 !important;
+    padding: 6px 8px !important;
+  }
 
-.blurred>*:not(#processing-overlay) {
-  filter: blur(3px);
-  pointer-events: none;
-  user-select: none;
-}
+  #page-ledger table th {
+    background: #eee !important;
+  }
 
-/* LEDGER TABLE */
-#page-ledger .card {
-  padding: 0;
-  overflow-x: auto;
-  max-height: calc(100vh - 320px);
-  overflow-y: auto;
-}
+  #page-ledger .card {
+    max-height: none !important;
+    overflow: visible !important;
+  }
 
-#page-ledger .card table {
-  width: 100%;
-  table-layout: auto;
-  border-collapse: collapse;
-}
+  .print-doc {
+    max-width: 98% !important;
+    margin: 0 auto !important;
+    color: #000 !important;
+    font-size: 16px !important;
+  }
 
-#page-ledger .card table thead th {
-  position: sticky;
-  top: 0;
-  background: #fff;
-  z-index: 2;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: #888;
-  border-bottom: 1px solid #e5e5e0;
-  font-weight: 400;
-  white-space: nowrap;
-}
+  .print-doc * {
+    color: #000 !important;
+    border-color: #000 !important;
+  }
 
-#page-ledger .card table tbody td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #f0f0ec;
-}
+  .print-logo {
+    font-size: 26px !important;
+  }
 
-#page-ledger .card table tbody tr:last-child td {
-  border-bottom: none;
+  .print-sub {
+    font-size: 13px !important;
+  }
+
+  .print-meta {
+    font-size: 14px !important;
+  }
+
+  .print-table {
+    font-size: 14px !important;
+  }
+
+  .print-table th,
+  .print-table td {
+    padding: 6px 7px !important;
+  }
+
+  .print-table th {
+    background: #eee !important;
+  }
+
+  .print-totals {
+    font-size: 16px !important;
+  }
+
+  .print-totals div:last-child {
+    font-size: 19px !important;
+  }
+
+  .print-words {
+    font-size: 13px !important;
+  }
+
+  .print-balances {
+    font-size: 14px !important;
+  }
+
+  .print-footer {
+    font-size: 11px !important;
+  }
+
+  .print-only {
+    display: block !important;
+    text-align: center;
+    font-size: 12px;
+    margin-bottom: 10px;
+    color: #000 !important;
+  }
 }
