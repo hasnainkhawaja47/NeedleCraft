@@ -33,6 +33,22 @@ async function getAllRows(table, columns, firmId) {
   return allRows;
 }
 
+async function getOpeningBalance(firmId, fromDate) {
+  const [billsSum, pmtsSum, archBillsSum, archPmtsSum] = await Promise.all([
+    supabase.from('bills').select('total_amount').eq('firm_id', firmId).lt('bill_date', fromDate),
+    supabase.from('payments').select('amount').eq('firm_id', firmId).lt('payment_date', fromDate),
+    supabase.from('archive_bills').select('total_amount').eq('firm_id', firmId).lt('bill_date', fromDate),
+    supabase.from('archive_payments').select('amount').eq('firm_id', firmId).lt('payment_date', fromDate),
+  ]);
+
+  const billTotal = (billsSum.data || []).reduce((s, b) => s + (b.total_amount || 0), 0);
+  const pmtTotal = (pmtsSum.data || []).reduce((s, p) => s + (p.amount || 0), 0);
+  const archBillTotal = (archBillsSum.data || []).reduce((s, b) => s + (b.total_amount || 0), 0);
+  const archPmtTotal = (archPmtsSum.data || []).reduce((s, p) => s + (p.amount || 0), 0);
+
+  return (billTotal + archBillTotal) - (pmtTotal + archPmtTotal);
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -60,30 +76,7 @@ module.exports = async (req, res) => {
     // Calculate opening balance = everything BEFORE fromDate (both active and archive)
     let openingBalance = 0;
     if (fromDate) {
-      const [
-        allBillsBefore,
-        allPmtsBefore,
-        archBillsBefore,
-        archPmtsBefore
-      ] = await Promise.all([
-        getAllRows('bills', 'total_amount, bill_date', firm_id),
-        getAllRows('payments', 'amount, payment_date', firm_id),
-        getAllRows('archive_bills', 'total_amount, bill_date', firm_id),
-        getAllRows('archive_payments', 'amount, payment_date', firm_id),
-      ]);
-
-      const billsBefore = [
-        ...allBillsBefore.filter(b => b.bill_date < fromDate),
-        ...archBillsBefore.filter(b => b.bill_date < fromDate),
-      ];
-      const pmtsBefore = [
-        ...allPmtsBefore.filter(p => p.payment_date < fromDate),
-        ...archPmtsBefore.filter(p => p.payment_date < fromDate),
-      ];
-
-      openingBalance =
-        billsBefore.reduce((s, b) => s + (b.total_amount || 0), 0) -
-        pmtsBefore.reduce((s, p) => s + (p.amount || 0), 0);
+      openingBalance = await getOpeningBalance(firm_id, fromDate);
     }
 
     // Build combined entries from both active and archive
