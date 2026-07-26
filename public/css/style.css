@@ -1120,6 +1120,10 @@ tr:last-child td {
   margin-bottom: 1rem
 }
 
+.print-only {
+  display: none;
+}
+
 @media print {
 
   .sidebar,
@@ -1207,6 +1211,7 @@ tr:last-child td {
   .print-footer {
     font-size: 11px !important;
   }
+
   #page-ledger {
     padding: 10mm !important;
     color: #000 !important;
@@ -1248,6 +1253,14 @@ tr:last-child td {
   #page-ledger .card {
     max-height: none !important;
     overflow: visible !important;
+  }
+
+  .print-only {
+    display: block !important;
+    text-align: center;
+    font-size: 12px;
+    margin-bottom: 10px;
+    color: #000 !important;
   }
 
 }
