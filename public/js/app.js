@@ -485,14 +485,36 @@ function addBillRow() {
     <td><button class="icon-btn del" onclick="this.closest('tr').remove();recalcTotal()" title="Remove"><i class="ti ti-x"></i></button></td>`;
   tbody.appendChild(tr);
 
-  // Wire up the particular input
   const particularInput = tr.querySelector('.particular-input');
   const dropdown = tr.querySelector('.particular-dropdown');
   const qtyInput = tr.querySelectorAll('input[type=number]')[0];
   const priceInput = tr.querySelectorAll('input[type=number]')[1];
 
+  let activeIndex = -1;
+
+  function selectProduct(item) {
+    particularInput.value = item.dataset.name;
+    particularInput.dataset.code = item.dataset.code;
+    if (!priceInput.value || priceInput.value === '0') {
+      priceInput.value = item.dataset.price;
+    }
+    dropdown.classList.add('hidden');
+    activeIndex = -1;
+    calcRowTotal(tr);
+  }
+
+  function highlight(index) {
+    const items = dropdown.querySelectorAll('.dropdown-item');
+    items.forEach(i => i.classList.remove('active-item'));
+    if (items[index]) {
+      items[index].classList.add('active-item');
+      items[index].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
   particularInput.addEventListener('input', () => {
     const q = particularInput.value.toLowerCase().trim();
+    activeIndex = -1;
     if (!q) { dropdown.classList.add('hidden'); return; }
     const matches = allProducts.filter(p =>
       p.code.toLowerCase().startsWith(q) ||
@@ -510,22 +532,39 @@ function addBillRow() {
     dropdown.querySelectorAll('.dropdown-item').forEach(item => {
       item.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        particularInput.value = item.dataset.name;
-        particularInput.dataset.code = item.dataset.code;
-        if (!priceInput.value || priceInput.value === '0') {
-          priceInput.value = item.dataset.price;
-        }
-        dropdown.classList.add('hidden');
-        calcRowTotal(tr);
+        selectProduct(item);
       });
     });
+  });
+
+  particularInput.addEventListener('keydown', (e) => {
+    const items = dropdown.querySelectorAll('.dropdown-item');
+    if (dropdown.classList.contains('hidden') || items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      highlight(activeIndex);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      highlight(activeIndex);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      const index = activeIndex >= 0 ? activeIndex : 0;
+      if (items[index]) {
+        e.preventDefault();
+        selectProduct(items[index]);
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.classList.add('hidden');
+      activeIndex = -1;
+    }
   });
 
   particularInput.addEventListener('blur', () => {
     setTimeout(() => dropdown.classList.add('hidden'), 150);
   });
 
-  // Also wire qty and price to recalc
   qtyInput.addEventListener('input', () => calcRowTotal(tr));
   priceInput.addEventListener('input', () => calcRowTotal(tr));
 }
