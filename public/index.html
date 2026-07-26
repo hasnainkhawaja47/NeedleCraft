@@ -152,32 +152,35 @@
       <!-- PAYMENTS -->
       <section id="page-payments" class="page">
         <h1 class="page-title">Add payment</h1>
-        <div class="card" style="max-width:480px">
-          <div class="fg"><label>Client name</label><input type="text" id="pmt-client-input"
-              placeholder="Type to search..." autocomplete="off">
-            <div id="pmt-client-dropdown" class="dropdown-list hidden"></div><input type="hidden" id="pmt-firm-id">
+        <div class="payments-layout">
+          <div class="card" style="max-width:480px">
+            <div class="fg"><label>Client name</label><input type="text" id="pmt-client-input"
+                placeholder="Type to search..." autocomplete="off">
+              <div id="pmt-client-dropdown" class="dropdown-list hidden"></div><input type="hidden" id="pmt-firm-id">
+            </div>
+            <div class="fg"><label>Date</label><input type="date" id="pmt-date"></div>
+            <div class="fg"><label>Amount (₨)</label><input type="number" id="pmt-amount" placeholder="0" min="0"></div>
+            <div class="fg"><label>Payment method</label>
+              <select id="pmt-method" onchange="toggleBankFields()">
+                <option>Cash</option>
+                <option>Cheque</option>
+                <option>Bank Transfer</option>
+                <option>Draft</option>
+              </select>
+            </div>
+            <div id="bank-fields" style="display:none">
+              <div class="fg"><label>Bank name</label><input type="text" id="pmt-bank"
+                  placeholder="e.g. Online Meezan Bank"></div>
+              <div class="fg"><label>Cheque / Reference #</label><input type="text" id="pmt-ref"></div>
+            </div>
+            <div class="fg"><label>Memo</label><input type="text" id="pmt-memo" placeholder="Optional note"></div>
+            <button class="btn-primary" onclick="savePayment()"><i class="ti ti-device-floppy"></i> Save
+              payment</button>
           </div>
-          <div class="fg"><label>Date</label><input type="date" id="pmt-date"></div>
-          <div class="fg"><label>Amount (₨)</label><input type="number" id="pmt-amount" placeholder="0" min="0"></div>
-          <div class="fg"><label>Payment method</label>
-            <select id="pmt-method" onchange="toggleBankFields()">
-              <option>Cash</option>
-              <option>Cheque</option>
-              <option>Bank Transfer</option>
-              <option>Draft</option>
-            </select>
+          <div class="card" style="padding:0">
+            <div class="ct" style="padding:1rem 1.1rem 0">Recent payments</div>
+            <div id="recent-pmts-table" class="scroll-table-payments"></div>
           </div>
-          <div id="bank-fields" style="display:none">
-            <div class="fg"><label>Bank name</label><input type="text" id="pmt-bank"
-                placeholder="e.g. Online Meezan Bank"></div>
-            <div class="fg"><label>Cheque / Reference #</label><input type="text" id="pmt-ref"></div>
-          </div>
-          <div class="fg"><label>Memo</label><input type="text" id="pmt-memo" placeholder="Optional note"></div>
-          <button class="btn-primary" onclick="savePayment()"><i class="ti ti-device-floppy"></i> Save payment</button>
-        </div>
-        <div class="card" style="margin-top:1rem">
-          <div class="ct">Recent payments</div>
-          <div id="recent-pmts-table"></div>
         </div>
       </section>
 

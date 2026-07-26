@@ -137,6 +137,37 @@ body {
   margin-bottom: 1.25rem
 }
 
+.payments-layout {
+  display: grid;
+  grid-template-columns: 480px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+#recent-pmts-table {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.scroll-table-payments {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding: 0 1.1rem 1rem;
+}
+
+.scroll-table-payments thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .payments-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .page-title {
   font-size: 18px;
   font-weight: 500;
