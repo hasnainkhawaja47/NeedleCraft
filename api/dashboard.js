@@ -13,55 +13,29 @@ module.exports = async (req, res) => {
     const { data: firms } = await supabase.from('firms').select('id, name');
     if (!firms) return res.status(500).json({ error: 'Could not load firms' });
 
-    // All 4 balance queries in parallel
-    // const [
-    //   { data: allBills },
-    //   { data: allPmts },
-    //   { data: archBills },
-    //   { data: archPmts }
-    // ] = await Promise.all([
-    //   supabase.from('bills').select('firm_id, total_amount, bill_date'),
-    //   supabase.from('payments').select('firm_id, amount, payment_date'),
-    //   supabase.from('archive_bills').select('firm_id, total_amount, bill_date'),
-    //   supabase.from('archive_payments').select('firm_id, amount, payment_date'),
-    // ]);
-    async function getAllRows(table, columns) {
-      let allRows = [];
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from(table).select(columns).range(from, from + pageSize - 1);
-        if (error || !data || data.length === 0) break;
-        allRows = allRows.concat(data);
-        if (data.length < pageSize) break;
-        from += pageSize;
-      }
-      return allRows;
-    }
-
-    const [allBills, allPmts, archBills, archPmts] = await Promise.all([
-      getAllRows('bills', 'firm_id, total_amount, bill_date'),
-      getAllRows('payments', 'firm_id, amount, payment_date'),
-      getAllRows('archive_bills', 'firm_id, total_amount, bill_date'),
-      getAllRows('archive_payments', 'firm_id, amount, payment_date'),
+    // Balances and last-bill-dates now come pre-aggregated from Postgres —
+    // one row per firm, instead of fetching every bill/payment row ever created.
+    const [
+      { data: balances },
+      { data: lastBillDates },
+      { data: recentBills },
+      { data: recentPmts },
+      { data: todayBills },
+      { data: anomalies }
+    ] = await Promise.all([
+      supabase.rpc('get_firm_balances'),
+      supabase.rpc('get_last_bill_dates'),
+      supabase.from('bills').select('firm_id, total_amount, bill_date').gte('bill_date', sixMonthsAgoStr),
+      supabase.from('payments').select('firm_id, amount, payment_date').gte('payment_date', sixMonthsAgoStr),
+      supabase.from('bills').select('id, firm_id, total_amount, is_credit, bill_date').eq('bill_date', today),
+      supabase.from('anomalies').select('*').eq('dismissed', false).order('detected_at', { ascending: false }),
     ]);
 
-    // Build balance maps — billed and paid separately, then combined
     const billedMap = {};
     const paidMap = {};
-
-    (allBills || []).forEach(b => {
-      billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0);
-    });
-    (archBills || []).forEach(b => {
-      billedMap[b.firm_id] = (billedMap[b.firm_id] || 0) + (b.total_amount || 0);
-    });
-    (allPmts || []).forEach(p => {
-      paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0);
-    });
-    (archPmts || []).forEach(p => {
-      paidMap[p.firm_id] = (paidMap[p.firm_id] || 0) + (p.amount || 0);
+    (balances || []).forEach(b => {
+      billedMap[b.firm_id] = b.billed || 0;
+      paidMap[b.firm_id] = b.paid || 0;
     });
 
     let totalOutstanding = 0;
@@ -76,7 +50,8 @@ module.exports = async (req, res) => {
     clientBalances.sort((a, b) => b.balance - a.balance);
     const top10 = clientBalances.slice(0, 10);
 
-    // Monthly stats for charts (active only)
+    // Monthly stats for charts — now built from a 6-month-bounded fetch,
+    // not the entire bill/payment history.
     const monthlyStats = {};
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
@@ -84,11 +59,11 @@ module.exports = async (req, res) => {
       const key = d.toISOString().slice(0, 7);
       monthlyStats[key] = { billed: 0, collected: 0 };
     }
-    (allBills || []).filter(b => b.bill_date >= sixMonthsAgoStr).forEach(b => {
+    (recentBills || []).forEach(b => {
       const k = b.bill_date.slice(0, 7);
       if (monthlyStats[k]) monthlyStats[k].billed += b.total_amount || 0;
     });
-    (allPmts || []).filter(p => p.payment_date >= sixMonthsAgoStr).forEach(p => {
+    (recentPmts || []).forEach(p => {
       const k = p.payment_date.slice(0, 7);
       if (monthlyStats[k]) monthlyStats[k].collected += p.amount || 0;
     });
@@ -99,18 +74,12 @@ module.exports = async (req, res) => {
     const collectionRate = billedThisMonth > 0
       ? Math.round((collectedThisMonth / billedThisMonth) * 100) : 0;
 
-    // Today's bills
-    const { data: todayBills } = await supabase
-      .from('bills')
-      .select('id, firm_id, total_amount, is_credit, bill_date')
-      .eq('bill_date', today);
-
     const todayBillsWithNames = (todayBills || []).map(b => ({
       ...b,
       firm_name: firms.find(f => f.id === b.firm_id)?.name || 'Unknown'
     }));
 
-    // Aging — based on last active bill date per client
+    // Aging — using pre-aggregated last bill dates instead of scanning all bills
     const now = new Date();
     const aging = {
       current: { amount: 0, count: 0 },
@@ -120,10 +89,8 @@ module.exports = async (req, res) => {
     };
 
     const lastBillByFirm = {};
-    (allBills || []).forEach(b => {
-      if (!lastBillByFirm[b.firm_id] || b.bill_date > lastBillByFirm[b.firm_id]) {
-        lastBillByFirm[b.firm_id] = b.bill_date;
-      }
+    (lastBillDates || []).forEach(row => {
+      lastBillByFirm[row.firm_id] = row.last_bill_date;
     });
 
     clientBalances.forEach(c => {
@@ -135,13 +102,6 @@ module.exports = async (req, res) => {
       else if (days <= 90) { aging.overdue61.amount += c.balance; aging.overdue61.count++; }
       else { aging.critical.amount += c.balance; aging.critical.count++; }
     });
-
-    // Anomalies
-    const { data: anomalies } = await supabase
-      .from('anomalies')
-      .select('*')
-      .eq('dismissed', false)
-      .order('detected_at', { ascending: false });
 
     res.json({
       totalOutstanding,

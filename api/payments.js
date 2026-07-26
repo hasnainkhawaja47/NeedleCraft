@@ -23,8 +23,10 @@ module.exports = async (req, res) => {
       const { firm_id, payment_date, amount, method: pmtMethod, cheque_number, bank_name, memo } = body;
 
       // Overpayment check
-      const { data: bills } = await supabase.from('bills').select('total_amount').eq('firm_id', firm_id);
-      const { data: pmts } = await supabase.from('payments').select('amount').eq('firm_id', firm_id);
+      const [{ data: bills }, { data: pmts }] = await Promise.all([
+        supabase.from('bills').select('total_amount').eq('firm_id', firm_id),
+        supabase.from('payments').select('amount').eq('firm_id', firm_id),
+      ]);
       const totalBilled = (bills || []).reduce((s, b) => s + b.total_amount, 0);
       const totalPaid = (pmts || []).reduce((s, p) => s + p.amount, 0);
       const currentBalance = totalBilled - totalPaid;
