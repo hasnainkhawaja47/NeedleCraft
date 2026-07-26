@@ -1207,6 +1207,49 @@ tr:last-child td {
   .print-footer {
     font-size: 11px !important;
   }
+  #page-ledger {
+    padding: 10mm !important;
+    color: #000 !important;
+  }
+
+  #page-ledger * {
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+
+  #page-ledger h1 {
+    font-size: 20px !important;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  #page-ledger .metrics-row {
+    display: flex !important;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  #page-ledger table {
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 12px !important;
+  }
+
+  #page-ledger table th,
+  #page-ledger table td {
+    border: 1px solid #000 !important;
+    padding: 4px 6px !important;
+  }
+
+  #page-ledger table th {
+    background: #eee !important;
+  }
+
+  #page-ledger .card {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
 }
 
 .print-doc {
