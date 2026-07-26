@@ -22,14 +22,11 @@ module.exports = async (req, res) => {
     if (method === 'POST') {
       const { firm_id, payment_date, amount, method: pmtMethod, cheque_number, bank_name, memo } = body;
 
-      // Overpayment check
-      const [{ data: bills }, { data: pmts }] = await Promise.all([
-        supabase.from('bills').select('total_amount').eq('firm_id', firm_id),
-        supabase.from('payments').select('amount').eq('firm_id', firm_id),
-      ]);
-      const totalBilled = (bills || []).reduce((s, b) => s + b.total_amount, 0);
-      const totalPaid = (pmts || []).reduce((s, p) => s + p.amount, 0);
-      const currentBalance = totalBilled - totalPaid;
+      // Overpayment check — reuses the same aggregate function as firms.js
+      const { data: balanceRows } = await supabase.rpc('get_firm_balance', { p_firm_id: firm_id });
+      const row = (balanceRows && balanceRows[0]) || {};
+      const currentBalance = (row.billed || 0) - (row.paid || 0);
+
       let anomaly = null;
       if (amount > currentBalance && currentBalance > 0) {
         anomaly = { type: 'Overpayment', firm_id, details: `Payment of ₨${amount.toLocaleString()} exceeds balance of ₨${currentBalance.toLocaleString()}`, reference_type: 'payment' };
@@ -44,8 +41,10 @@ module.exports = async (req, res) => {
       }
 
       // Recent entries for toast
-      const { data: recentBills } = await supabase.from('bills').select('id, bill_date, total_amount').eq('firm_id', firm_id).order('bill_date', { ascending: false }).limit(3);
-      const { data: recentPmts } = await supabase.from('payments').select('payment_date, amount, method, bank_name').eq('firm_id', firm_id).order('payment_date', { ascending: false }).limit(3);
+      const [{ data: recentBills }, { data: recentPmts }] = await Promise.all([
+        supabase.from('bills').select('id, bill_date, total_amount').eq('firm_id', firm_id).order('bill_date', { ascending: false }).limit(3),
+        supabase.from('payments').select('payment_date, amount, method, bank_name').eq('firm_id', firm_id).order('payment_date', { ascending: false }).limit(3),
+      ]);
 
       return res.json({ payment: newPmt, anomaly, recentBills: recentBills || [], recentPmts: recentPmts || [] });
     }
@@ -68,4 +67,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-};
+};s
