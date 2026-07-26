@@ -539,8 +539,28 @@ tr:last-child td {
   outline: none
 }
 
+.dropdown-item.active-item {
+  background: #f5f5f2;
+}
+
 .items-tbl input:focus {
   background: #fffef0
+}
+
+#bill-items-body tr {
+  position: relative;
+}
+
+.particular-dropdown {
+  z-index: 50;
+}
+
+.items-tbl {
+  position: relative;
+}
+
+#bill-items-body td {
+  overflow: visible !important;
 }
 
 .add-row-btn {

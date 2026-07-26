@@ -133,20 +133,59 @@ function buildSearchDropdown(inputId, dropdownId, firmsList, hiddenId, onSelect)
   const dropdown = document.getElementById(dropdownId);
   if (!input || !dropdown) return;
 
+  let activeIndex = -1;
+
+  function selectItem(item) {
+    input.value = item.dataset.name;
+    document.getElementById(hiddenId).value = item.dataset.id;
+    dropdown.classList.add('hidden');
+    activeIndex = -1;
+    if (onSelect) onSelect(item.dataset.id, item.dataset.name);
+  }
+
+  function highlight(index) {
+    const items = dropdown.querySelectorAll('.dropdown-item');
+    items.forEach(i => i.classList.remove('active-item'));
+    if (items[index]) {
+      items[index].classList.add('active-item');
+      items[index].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
   input.addEventListener('input', () => {
     const q = input.value.toLowerCase();
     const matches = firmsList.filter(f => f.name.toLowerCase().includes(q)).slice(0, 10);
+    activeIndex = -1;
     if (!q || matches.length === 0) { dropdown.classList.add('hidden'); return; }
     dropdown.innerHTML = matches.map(f => `<div class="dropdown-item" data-id="${f.id}" data-name="${f.name}">${f.name}</div>`).join('');
     dropdown.classList.remove('hidden');
     dropdown.querySelectorAll('.dropdown-item').forEach(item => {
-      item.addEventListener('click', () => {
-        input.value = item.dataset.name;
-        document.getElementById(hiddenId).value = item.dataset.id;
-        dropdown.classList.add('hidden');
-        if (onSelect) onSelect(item.dataset.id, item.dataset.name);
-      });
+      item.addEventListener('click', () => selectItem(item));
     });
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const items = dropdown.querySelectorAll('.dropdown-item');
+    if (dropdown.classList.contains('hidden') || items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      highlight(activeIndex);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      highlight(activeIndex);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      const index = activeIndex >= 0 ? activeIndex : 0;
+      if (items[index]) {
+        e.preventDefault();
+        selectItem(items[index]);
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.classList.add('hidden');
+      activeIndex = -1;
+    }
   });
 
   document.addEventListener('click', (e) => {
