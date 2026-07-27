@@ -11,11 +11,15 @@ module.exports = async (req, res) => {
 
   try {
     if (method === 'GET') {
-      const { data: products } = await supabase.from('products').select('*').order('code');
-      // Get units sold per product
-      const { data: itemTotals } = await supabase.from('bill_items').select('product_id, quantity');
+      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=120');
+
+      const [{ data: products }, { data: soldRows }] = await Promise.all([
+        supabase.from('products').select('*').order('code'),
+        supabase.rpc('get_product_units_sold'),
+      ]);
+
       const soldMap = {};
-      (itemTotals || []).forEach(i => { if (i.product_id) soldMap[i.product_id] = (soldMap[i.product_id] || 0) + (i.quantity || 0); });
+      (soldRows || []).forEach(r => { soldMap[r.product_id] = r.units_sold || 0; });
 
       const result = (products || []).map(p => ({
         ...p,
