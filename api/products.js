@@ -13,17 +13,22 @@ module.exports = async (req, res) => {
     if (method === 'GET') {
       res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=120');
 
-      const [{ data: products }, { data: soldRows }] = await Promise.all([
+      const [{ data: products }, { data: soldRows }, { data: soldYtdRows }] = await Promise.all([
         supabase.from('products').select('*').order('code'),
         supabase.rpc('get_product_units_sold'),
+        supabase.rpc('get_product_units_sold_ytd'),
       ]);
 
       const soldMap = {};
       (soldRows || []).forEach(r => { soldMap[r.product_id] = r.units_sold || 0; });
 
+      const soldYtdMap = {};
+      (soldYtdRows || []).forEach(r => { soldYtdMap[r.product_id] = r.units_sold_ytd || 0; });
+
       const result = (products || []).map(p => ({
         ...p,
         units_sold: soldMap[p.id] || 0,
+        units_sold_ytd: soldYtdMap[p.id] || 0,
         margin_pct: p.cost_price > 0 ? Math.round(((p.standard_price - p.cost_price) / p.standard_price) * 100) : null
       }));
       return res.json(result);

@@ -1558,6 +1558,7 @@ function renderProductsTable(products) {
       <th style="text-align:right;color:#bbb">Cost</th>
       <th style="text-align:right;color:#bbb">Margin</th>
       <th style="text-align:right">Units sold</th>
+      <th style="text-align:right">Sold (YTD)</th>
       <th style="width:60px"></th>
     </tr></thead>
     <tbody>${products.map(p => `
@@ -1568,6 +1569,7 @@ function renderProductsTable(products) {
         <td style="text-align:right;color:#888;font-size:12px">${p.cost_price ? fmtNum(p.cost_price) : '—'}</td>
         <td style="text-align:right;color:#888;font-size:12px">${p.margin_pct !== null ? p.margin_pct + '%' : '—'}</td>
         <td style="text-align:right">${fmtNum(p.units_sold)}</td>
+        <td style="text-align:right">${fmtNum(p.units_sold_ytd)}</td>
         <td><div class="action-btns">
           <button class="icon-btn" onclick="editProductModal(${p.id})" title="Edit"><i class="ti ti-edit"></i></button>
           <button class="icon-btn del" onclick="deleteProduct(${p.id})" title="Delete"><i class="ti ti-trash"></i></button>
