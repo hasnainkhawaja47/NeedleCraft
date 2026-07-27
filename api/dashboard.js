@@ -3,7 +3,7 @@ const supabase = require('./_supabase');
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
+
   try {
     const today = new Date().toISOString().split('T')[0];
     const sixMonthsAgo = new Date();
@@ -13,11 +13,8 @@ module.exports = async (req, res) => {
     const { data: firms } = await supabase.from('firms').select('id, name');
     if (!firms) return res.status(500).json({ error: 'Could not load firms' });
 
-    // Balances and last-bill-dates now come pre-aggregated from Postgres —
-    // one row per firm, instead of fetching every bill/payment row ever created.
     const [
       { data: balances },
-      { data: lastBillDates },
       { data: recentBills },
       { data: recentPmts },
       { data: todayBills },
@@ -25,7 +22,6 @@ module.exports = async (req, res) => {
       { data: anomalies }
     ] = await Promise.all([
       supabase.rpc('get_firm_balances'),
-      supabase.rpc('get_last_bill_dates'),
       supabase.from('bills').select('firm_id, total_amount, bill_date').gte('bill_date', sixMonthsAgoStr),
       supabase.from('payments').select('firm_id, amount, payment_date').gte('payment_date', sixMonthsAgoStr),
       supabase.from('bills').select('id, firm_id, total_amount, is_credit, bill_date').eq('bill_date', today),
@@ -52,8 +48,6 @@ module.exports = async (req, res) => {
     clientBalances.sort((a, b) => b.balance - a.balance);
     const top10 = clientBalances.slice(0, 10);
 
-    // Monthly stats for charts — now built from a 6-month-bounded fetch,
-    // not the entire bill/payment history.
     const monthlyStats = {};
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
@@ -85,29 +79,6 @@ module.exports = async (req, res) => {
       ...p,
       firm_name: firms.find(f => f.id === p.firm_id)?.name || 'Unknown'
     }));
-    // Aging — using pre-aggregated last bill dates instead of scanning all bills
-    const now = new Date();
-    const aging = {
-      current: { amount: 0, count: 0 },
-      overdue31: { amount: 0, count: 0 },
-      overdue61: { amount: 0, count: 0 },
-      critical: { amount: 0, count: 0 }
-    };
-
-    const lastBillByFirm = {};
-    (lastBillDates || []).forEach(row => {
-      lastBillByFirm[row.firm_id] = row.last_bill_date;
-    });
-
-    clientBalances.forEach(c => {
-      const lastDate = lastBillByFirm[c.id];
-      if (!lastDate) return;
-      const days = Math.floor((now - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-      if (days <= 30) { aging.current.amount += c.balance; aging.current.count++; }
-      else if (days <= 60) { aging.overdue31.amount += c.balance; aging.overdue31.count++; }
-      else if (days <= 90) { aging.overdue61.amount += c.balance; aging.overdue61.count++; }
-      else { aging.critical.amount += c.balance; aging.critical.count++; }
-    });
 
     res.json({
       totalOutstanding,
@@ -119,8 +90,6 @@ module.exports = async (req, res) => {
       todayBills: todayBillsWithNames,
       todayPmts: todayPmtsWithNames,
       monthlyStats,
-      aging,
-      anomalies: anomalies || [],
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

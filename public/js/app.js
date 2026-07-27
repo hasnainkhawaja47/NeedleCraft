@@ -289,7 +289,6 @@ async function loadProductsPage() {
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
   showLoading('dash-metrics', 'Loading metrics...');
-  showLoading('aging-strip', '');
   showLoading('anomaly-table-wrap', 'Checking for anomalies...');
   showLoading('top-clients-table', 'Loading...');
   showLoading('todays-bills-table', 'Loading...');
@@ -302,13 +301,6 @@ async function loadDashboard() {
       <div class="metric-card"><div class="metric-label">Collected this month</div><div class="metric-value green">${fmt(d.collectedThisMonth)}</div></div>
       <div class="metric-card"><div class="metric-label">Billed this month</div><div class="metric-value gold">${fmt(d.billedThisMonth)}</div></div>
       <div class="metric-card"><div class="metric-label">Collection rate</div><div class="metric-value blue">${d.collectionRate}%</div></div>`;
-
-    const ag = d.aging;
-    document.getElementById('aging-strip').innerHTML = `
-      <div class="aging-card age-0" onclick="showOutstandingFiltered(0,30)"><div class="aging-label">Current 0–30 days</div><div class="aging-value">${fmt(ag.current.amount)}</div><div class="aging-sub">${ag.current.count} clients</div></div>
-      <div class="aging-card age-1" onclick="showOutstandingFiltered(31,60)"><div class="aging-label">Overdue 31–60 days</div><div class="aging-value">${fmt(ag.overdue31.amount)}</div><div class="aging-sub">${ag.overdue31.count} clients</div></div>
-      <div class="aging-card age-2" onclick="showOutstandingFiltered(61,90)"><div class="aging-label">Overdue 61–90 days</div><div class="aging-value">${fmt(ag.overdue61.amount)}</div><div class="aging-sub">${ag.overdue61.count} clients</div></div>
-      <div class="aging-card age-3" onclick="showOutstandingFiltered(91,9999)"><div class="aging-label">Critical 90+ days</div><div class="aging-value">${fmt(ag.critical.amount)}</div><div class="aging-sub">${ag.critical.count} clients</div></div>`;
 
     const months = Object.keys(d.monthlyStats);
     const labels = months.map(m => {
