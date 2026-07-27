@@ -158,6 +158,7 @@ let editingBillId = null;
 let revenueChart = null;
 let effChart = null;
 let printReturnPage = 'new-bill';
+let editingBillOriginalTotal = 0;
 
 window.onafterprint = () => {
   if (printReturnPage === 'new-bill') {
@@ -426,6 +427,7 @@ async function dismissAnomaly(id) {
 
 // ─── NEW BILL ─────────────────────────────────────────────────────────────────
 function initNewBillForm() {
+  editingBillOriginalTotal = 0;
   document.getElementById('bill-date').value = today();
   document.getElementById('bill-bilty').value = '';
   document.getElementById('bill-do').value = '';
@@ -459,7 +461,7 @@ function initNewBillForm() {
 async function loadPrevBalance(firmId) {
   try {
     const firm = await api(`/firms?id=${firmId}`);
-    const balance = firm.balance || 0;
+    const balance = (firm.balance || 0) - editingBillOriginalTotal;
     document.getElementById('prev-bal-row').style.display = 'block';
     document.getElementById('prev-bal-val').textContent = fmt(balance);
     document.getElementById('prev-bal-val').className = balance > 0 ? 'prev-bal-val red' : 'prev-bal-val green';
@@ -828,6 +830,7 @@ async function saveBill() {
     // Keep the form populated instead of wiping it — set editingBillId
     // to the saved bill so any further Save re-uses PUT (update), not a new bill.
     editingBillId = result.bill.id;
+    editingBillOriginalTotal = result.bill.total_amount;
     document.getElementById('next-bill-num').textContent = result.bill.id;
     await loadFirms();
     await loadPrevBalance(firmId);
@@ -896,6 +899,7 @@ async function editBill(id) {
     });
 
     editingBillId = id;
+    editingBillOriginalTotal = bill.total_amount;
     await new Promise(r => setTimeout(r, 50));
 
     const firm = allFirms.find(f => f.id === bill.firm_id);
