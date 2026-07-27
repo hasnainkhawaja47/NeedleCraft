@@ -14,6 +14,18 @@ function checkAuth() {
 }
 window.onafterprint = hidePrint;
 
+async function refreshFirmBalance(firmId) {
+  try {
+    const updated = await api(`/firms?id=${firmId}`);
+    const idx = allFirms.findIndex(f => f.id === firmId);
+    if (idx !== -1) {
+      allFirms[idx] = { ...allFirms[idx], balance: updated.balance };
+    }
+  } catch (e) {
+    console.error('refreshFirmBalance failed, falling back to full reload:', e);
+    await loadFirms();
+  }
+}
 // ─── PROCESSING OVERLAY ───────────────────────────────────────────────────────
 function showProcessingOverlay(message = 'Saving...') {
   let overlay = document.getElementById('processing-overlay');
@@ -244,7 +256,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   showLoading('dash-metrics', 'Loading metrics...');
-  showLoading('aging-strip', '');
   showLoading('anomaly-table-wrap', 'Checking for anomalies...');
   showLoading('top-clients-table', 'Loading...');
   showLoading('todays-bills-table', 'Loading...');
@@ -815,7 +826,7 @@ async function saveBill() {
     editingBillId = result.bill.id;
     editingBillOriginalTotal = result.bill.total_amount;
     document.getElementById('next-bill-num').textContent = result.bill.id;
-    await loadFirms();
+    await refreshFirmBalance(firmId);
     await loadPrevBalance(firmId);
   } catch (e) {
     showBillError('Error saving bill: ' + e.message);
@@ -1209,7 +1220,7 @@ async function savePayment() {
 
     initPaymentsForm();
     await loadRecentPayments();
-    await loadFirms();
+    await refreshFirmBalance(firmId);
   } catch (e) {
     showPmtError('Error saving payment: ' + e.message);
   } finally {
