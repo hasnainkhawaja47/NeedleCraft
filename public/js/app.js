@@ -1,4 +1,11 @@
 // ─── STATE ────────────────────────────────────────────────────────────────────
+function debounce(fn, delay = 150) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
 
 function checkAuth() {
   const token = localStorage.getItem('nc_token');
@@ -156,7 +163,6 @@ let allProducts = [];
 let currentLedgerFirmId = null;
 let editingBillId = null;
 let revenueChart = null;
-let effChart = null;
 let printReturnPage = 'new-bill';
 let editingBillOriginalTotal = 0;
 
@@ -287,7 +293,7 @@ async function loadDashboard() {
   showLoading('anomaly-table-wrap', 'Checking for anomalies...');
   showLoading('top-clients-table', 'Loading...');
   showLoading('todays-bills-table', 'Loading...');
-
+  showLoading('todays-pmts-table', 'Loading...');
   try {
     const d = await api('/dashboard');
 
@@ -311,12 +317,8 @@ async function loadDashboard() {
     });
     const billed = months.map(m => Math.round(d.monthlyStats[m].billed / 1000));
     const collected = months.map(m => Math.round(d.monthlyStats[m].collected / 1000));
-    const efficiency = months.map(m =>
-      d.monthlyStats[m].billed > 0
-        ? Math.round((d.monthlyStats[m].collected / d.monthlyStats[m].billed) * 100) : 0);
 
     if (revenueChart) revenueChart.destroy();
-    if (effChart) effChart.destroy();
 
     revenueChart = new Chart(document.getElementById('revenueChart'), {
       type: 'bar',
@@ -337,33 +339,20 @@ async function loadDashboard() {
       }
     });
 
-    effChart = new Chart(document.getElementById('effChart'), {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Collection %',
-          data: efficiency,
-          borderColor: '#1D9E75',
-          backgroundColor: 'rgba(29,158,117,0.08)',
-          borderWidth: 2,
-          pointBackgroundColor: '#1D9E75',
-          pointRadius: 4,
-          fill: true,
-          tension: 0.3
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888' } },
-          y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888', callback: v => v + '%' } }
-        }
-      }
-    });
 
     renderAnomalyTable(d.anomalies || []);
+
+    document.getElementById('todays-pmts-table').innerHTML = (d.todayPmts || []).length === 0
+      ? '<p class="empty-state">No payments received today.</p>'
+      : `<table>
+      <thead><tr><th>Client</th><th>Method</th><th style="text-align:right;width:100px">Amount</th></tr></thead>
+      <tbody>${d.todayPmts.map(p => `
+        <tr class="tr-hover" onclick="openLedger(${p.firm_id})">
+          <td>${p.firm_name}</td>
+          <td>${p.method}${p.bank_name ? ' — ' + p.bank_name : ''}</td>
+          <td style="text-align:right" class="green">${fmtNum(p.amount)}</td>
+        </tr>`).join('')}
+      </tbody></table>`;
 
     document.getElementById('top-clients-table').innerHTML = d.top10.length === 0
       ? '<p class="empty-state">No outstanding balances.</p>'
@@ -514,7 +503,7 @@ function addBillRow() {
     }
   }
 
-  particularInput.addEventListener('input', () => {
+  const performProductSearch = debounce(() => {
     const q = particularInput.value.toLowerCase().trim();
     activeIndex = -1;
     if (!q) { dropdown.classList.add('hidden'); return; }
@@ -537,7 +526,9 @@ function addBillRow() {
         selectProduct(item);
       });
     });
-  });
+  }, 150);
+
+  particularInput.addEventListener('input', performProductSearch);
 
   particularInput.addEventListener('keydown', (e) => {
     const items = dropdown.querySelectorAll('.dropdown-item');

@@ -21,6 +21,7 @@ module.exports = async (req, res) => {
       { data: recentBills },
       { data: recentPmts },
       { data: todayBills },
+      { data: todayPmts },
       { data: anomalies }
     ] = await Promise.all([
       supabase.rpc('get_firm_balances'),
@@ -28,6 +29,7 @@ module.exports = async (req, res) => {
       supabase.from('bills').select('firm_id, total_amount, bill_date').gte('bill_date', sixMonthsAgoStr),
       supabase.from('payments').select('firm_id, amount, payment_date').gte('payment_date', sixMonthsAgoStr),
       supabase.from('bills').select('id, firm_id, total_amount, is_credit, bill_date').eq('bill_date', today),
+      supabase.from('payments').select('id, firm_id, amount, method, bank_name').eq('payment_date', today),
       supabase.from('anomalies').select('*').eq('dismissed', false).order('detected_at', { ascending: false }),
     ]);
 
@@ -79,6 +81,10 @@ module.exports = async (req, res) => {
       firm_name: firms.find(f => f.id === b.firm_id)?.name || 'Unknown'
     }));
 
+    const todayPmtsWithNames = (todayPmts || []).map(p => ({
+      ...p,
+      firm_name: firms.find(f => f.id === p.firm_id)?.name || 'Unknown'
+    }));
     // Aging — using pre-aggregated last bill dates instead of scanning all bills
     const now = new Date();
     const aging = {
@@ -111,6 +117,7 @@ module.exports = async (req, res) => {
       billsToday: todayBillsWithNames.length,
       top10,
       todayBills: todayBillsWithNames,
+      todayPmts: todayPmtsWithNames,
       monthlyStats,
       aging,
       anomalies: anomalies || [],

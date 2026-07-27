@@ -12,7 +12,7 @@ module.exports = async (req, res) => {
   try {
     if (method === 'GET') {
       if (query.firm_id) {
-        const { data } = await supabase.from('payments').select('*').eq('firm_id', query.firm_id).order('payment_date', { ascending: false });
+        const { data } = await supabase.from('payments').select('*').eq('firm_id', query.firm_id).order('payment_date', { ascending: false }).limit(200);
         return res.json(data || []);
       }
       const { data } = await supabase.from('payments').select('*, firms(name)').order('payment_date', { ascending: false }).limit(50);

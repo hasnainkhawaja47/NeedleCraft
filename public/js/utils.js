@@ -152,7 +152,7 @@ function buildSearchDropdown(inputId, dropdownId, firmsList, hiddenId, onSelect)
     }
   }
 
-  input.addEventListener('input', () => {
+  const performSearch = debounce(() => {
     const q = input.value.toLowerCase();
     const matches = firmsList.filter(f => f.name.toLowerCase().includes(q)).slice(0, 10);
     activeIndex = -1;
@@ -162,7 +162,9 @@ function buildSearchDropdown(inputId, dropdownId, firmsList, hiddenId, onSelect)
     dropdown.querySelectorAll('.dropdown-item').forEach(item => {
       item.addEventListener('click', () => selectItem(item));
     });
-  });
+  }, 150);
+
+  input.addEventListener('input', performSearch);
 
   input.addEventListener('keydown', (e) => {
     const items = dropdown.querySelectorAll('.dropdown-item');
