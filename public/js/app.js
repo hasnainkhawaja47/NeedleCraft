@@ -1329,7 +1329,7 @@ function renderClientsTable(firms) {
   wrap.innerHTML = `
     <div class="scroll-table-clients">
       <table>
-        <thead><tr><th style="width:36px">#</th><th>Name</th><th style="text-align:right;width:120px">Balance</th><th style="width:80px"></th></tr></thead>
+        <thead><tr><th style="width:40px">#</th><th>Name</th><th style="text-align:right;width:120px">Balance</th><th style="width:80px"></th></tr></thead>
         <tbody>${firms.map((f, i) => `
           <tr>
             <td style="color:#888">${i + 1}</td>
